@@ -29,4 +29,17 @@ public class PageResult<T> {
         result.setEmpty(page.isEmpty());
         return result;
     }
+
+    public static <T> PageResult<T> of(List<T> content, long totalElements, int totalPages, int number, int size) {
+        PageResult<T> result = new PageResult<>();
+        result.setContent(content);
+        result.setTotalElements(totalElements);
+        result.setTotalPages(totalPages);
+        result.setNumber(number - 1);
+        result.setSize(size);
+        result.setFirst(number <= 1);
+        result.setLast(number >= totalPages);
+        result.setEmpty(content == null || content.isEmpty());
+        return result;
+    }
 }
