@@ -1,12 +1,10 @@
 package com.warehouse.management.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.management.common.Result;
 import com.warehouse.management.entity.Inventory;
 import com.warehouse.management.service.InventoryService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -41,9 +39,9 @@ public class InventoryController {
 
     @GetMapping("/page")
     public Result<Page<Inventory>> findPage(
-            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Page<Inventory> pageable = new Page<>(page, size);
         return Result.success(inventoryService.findAll(pageable));
     }
 }

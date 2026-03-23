@@ -1,59 +1,63 @@
 package com.warehouse.management.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.warehouse.management.entity.MaterialCategory;
-import com.warehouse.management.repository.MaterialCategoryRepository;
+import com.warehouse.management.mapper.MaterialCategoryMapper;
 import com.warehouse.management.service.MaterialCategoryService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
-public class MaterialCategoryServiceImpl implements MaterialCategoryService {
-
-    private final MaterialCategoryRepository categoryRepository;
+public class MaterialCategoryServiceImpl extends ServiceImpl<MaterialCategoryMapper, MaterialCategory> implements MaterialCategoryService {
 
     @Override
     public MaterialCategory save(MaterialCategory category) {
-        return categoryRepository.save(category);
+        saveOrUpdate(category);
+        return category;
     }
 
     @Override
     public Optional<MaterialCategory> findById(Long id) {
-        return categoryRepository.findById(id);
+        return Optional.ofNullable(getById(id));
     }
 
     @Override
     public List<MaterialCategory> findAll() {
-        return categoryRepository.findAll();
+        return list();
     }
 
     @Override
     public List<MaterialCategory> findRootCategories() {
-        return categoryRepository.findByParentIdIsNull();
+        LambdaQueryWrapper<MaterialCategory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.isNull(MaterialCategory::getParentId);
+        return list(wrapper);
     }
 
     @Override
     public List<MaterialCategory> findByParentId(Long parentId) {
-        return categoryRepository.findByParentId(parentId);
+        LambdaQueryWrapper<MaterialCategory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(MaterialCategory::getParentId, parentId);
+        return list(wrapper);
     }
 
     @Override
-    public Page<MaterialCategory> findAll(Pageable pageable) {
-        return categoryRepository.findAll(pageable);
+    public Page<MaterialCategory> findAll(Page<MaterialCategory> pageable) {
+        return page(pageable);
     }
 
     @Override
     public void deleteById(Long id) {
-        categoryRepository.deleteById(id);
+        removeById(id);
     }
 
     @Override
     public boolean existsByCode(String code) {
-        return categoryRepository.existsByCode(code);
+        LambdaQueryWrapper<MaterialCategory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(MaterialCategory::getCode, code);
+        return count(wrapper) > 0;
     }
 }

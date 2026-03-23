@@ -1,33 +1,37 @@
 package com.warehouse.management.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import java.util.List;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@Entity
-@Table(name = "sys_department")
+@TableName("sys_department")
 public class Department extends BaseEntity {
-    @Column(nullable = false, length = 100)
+    @TableField
     private String name;
 
-    @Column(length = 200)
+    @TableField
     private String description;
 
     private Integer sort;
 
     private Integer status;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "parent_id")
+    @TableField("parent_id")
+    private Long parentId;
+
+    @TableField(exist = false)
     private Department parent;
 
-    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
+    @TableField(exist = false)
     private List<Department> children;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "organization_id")
+    @TableField("organization_id")
+    private Long organizationId;
+
+    @TableField(exist = false)
     private Organization organization;
 }

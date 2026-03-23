@@ -1,54 +1,56 @@
 package com.warehouse.management.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.warehouse.management.entity.Department;
-import com.warehouse.management.repository.DepartmentRepository;
+import com.warehouse.management.mapper.DepartmentMapper;
 import com.warehouse.management.service.DepartmentService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
-public class DepartmentServiceImpl implements DepartmentService {
-
-    private final DepartmentRepository departmentRepository;
+public class DepartmentServiceImpl extends ServiceImpl<DepartmentMapper, Department> implements DepartmentService {
 
     @Override
     public Department save(Department department) {
-        return departmentRepository.save(department);
+        saveOrUpdate(department);
+        return department;
     }
 
     @Override
     public Optional<Department> findById(Long id) {
-        return departmentRepository.findById(id);
+        return Optional.ofNullable(getById(id));
     }
 
     @Override
     public List<Department> findAll() {
-        return departmentRepository.findAll();
+        return list();
     }
 
     @Override
     public List<Department> findRootDepartments() {
-        return departmentRepository.findByParentIdIsNull();
+        LambdaQueryWrapper<Department> wrapper = new LambdaQueryWrapper<>();
+        wrapper.isNull(Department::getParentId);
+        return list(wrapper);
     }
 
     @Override
     public List<Department> findByParentId(Long parentId) {
-        return departmentRepository.findByParentId(parentId);
+        LambdaQueryWrapper<Department> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Department::getParentId, parentId);
+        return list(wrapper);
     }
 
     @Override
-    public Page<Department> findAll(Pageable pageable) {
-        return departmentRepository.findAll(pageable);
+    public Page<Department> findAll(Page<Department> pageable) {
+        return page(pageable);
     }
 
     @Override
     public void deleteById(Long id) {
-        departmentRepository.deleteById(id);
+        removeById(id);
     }
 }

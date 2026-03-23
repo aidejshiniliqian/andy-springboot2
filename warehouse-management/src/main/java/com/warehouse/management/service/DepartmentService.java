@@ -1,8 +1,7 @@
 package com.warehouse.management.service;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.warehouse.management.entity.Department;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +12,6 @@ public interface DepartmentService {
     List<Department> findAll();
     List<Department> findRootDepartments();
     List<Department> findByParentId(Long parentId);
-    Page<Department> findAll(Pageable pageable);
+    Page<Department> findAll(Page<Department> pageable);
     void deleteById(Long id);
 }

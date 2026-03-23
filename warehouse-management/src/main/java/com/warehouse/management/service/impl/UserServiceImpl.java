@@ -1,11 +1,12 @@
 package com.warehouse.management.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.warehouse.management.entity.User;
-import com.warehouse.management.repository.UserRepository;
+import com.warehouse.management.mapper.UserMapper;
 import com.warehouse.management.service.UserService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -14,9 +15,8 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class UserServiceImpl implements UserService {
+public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements UserService {
 
-    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -24,36 +24,41 @@ public class UserServiceImpl implements UserService {
         if (user.getPassword() != null && !user.getPassword().startsWith("$2a$")) {
             user.setPassword(passwordEncoder.encode(user.getPassword()));
         }
-        return userRepository.save(user);
+        saveOrUpdate(user);
+        return user;
     }
 
     @Override
     public Optional<User> findById(Long id) {
-        return userRepository.findById(id);
+        return Optional.ofNullable(getById(id));
     }
 
     @Override
     public Optional<User> findByUsername(String username) {
-        return userRepository.findByUsername(username);
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(User::getUsername, username);
+        return Optional.ofNullable(getOne(wrapper));
     }
 
     @Override
     public List<User> findAll() {
-        return userRepository.findAll();
+        return list();
     }
 
     @Override
-    public Page<User> findAll(Pageable pageable) {
-        return userRepository.findAll(pageable);
+    public Page<User> findAll(Page<User> pageable) {
+        return page(pageable);
     }
 
     @Override
     public void deleteById(Long id) {
-        userRepository.deleteById(id);
+        removeById(id);
     }
 
     @Override
     public boolean existsByUsername(String username) {
-        return userRepository.existsByUsername(username);
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(User::getUsername, username);
+        return count(wrapper) > 0;
     }
 }

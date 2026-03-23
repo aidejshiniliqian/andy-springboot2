@@ -1,44 +1,48 @@
 package com.warehouse.management.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.warehouse.management.entity.InStock;
 import com.warehouse.management.entity.InStockDetail;
 import com.warehouse.management.entity.Inventory;
-import com.warehouse.management.repository.InStockRepository;
-import com.warehouse.management.repository.InventoryRepository;
+import com.warehouse.management.mapper.InStockDetailMapper;
+import com.warehouse.management.mapper.InStockMapper;
+import com.warehouse.management.mapper.InventoryMapper;
 import com.warehouse.management.service.InStockService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class InStockServiceImpl implements InStockService {
+public class InStockServiceImpl extends ServiceImpl<InStockMapper, InStock> implements InStockService {
 
-    private final InStockRepository inStockRepository;
-    private final InventoryRepository inventoryRepository;
+    private final InStockDetailMapper inStockDetailMapper;
+    private final InventoryMapper inventoryMapper;
 
     @Override
     public InStock save(InStock inStock) {
-        return inStockRepository.save(inStock);
+        saveOrUpdate(inStock);
+        return inStock;
     }
 
     @Override
     @Transactional
     public InStock createInStock(InStock inStock) {
+        saveOrUpdate(inStock);
+        
         if (inStock.getDetails() != null) {
             for (InStockDetail detail : inStock.getDetails()) {
-                detail.setInStock(inStock);
+                detail.setInStockId(inStock.getId());
+                inStockDetailMapper.insert(detail);
             }
         }
-        InStock saved = inStockRepository.save(inStock);
-        updateInventory(saved);
-        return saved;
+        updateInventory(inStock);
+        return inStock;
     }
 
     private void updateInventory(InStock inStock) {
@@ -47,50 +51,52 @@ public class InStockServiceImpl implements InStockService {
         }
 
         for (InStockDetail detail : inStock.getDetails()) {
-            Optional<Inventory> existing = inventoryRepository.findByWarehouseIdAndMaterialId(
-                    inStock.getWarehouse().getId(),
-                    detail.getMaterial().getId()
-            );
+            LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(Inventory::getWarehouseId, inStock.getWarehouseId())
+                   .eq(Inventory::getMaterialId, detail.getMaterialId());
+            
+            Inventory existing = inventoryMapper.selectOne(wrapper);
 
-            if (existing.isPresent()) {
-                Inventory inventory = existing.get();
-                inventory.setQuantity(inventory.getQuantity().add(detail.getQuantity()));
-                inventory.setTotalPrice(inventory.getQuantity().multiply(inventory.getUnitPrice()));
-                inventoryRepository.save(inventory);
+            if (existing != null) {
+                existing.setQuantity(existing.getQuantity().add(detail.getQuantity()));
+                existing.setTotalPrice(existing.getQuantity().multiply(existing.getUnitPrice()));
+                inventoryMapper.updateById(existing);
             } else {
                 Inventory inventory = new Inventory();
-                inventory.setWarehouse(inStock.getWarehouse());
-                inventory.setMaterial(detail.getMaterial());
+                inventory.setWarehouseId(inStock.getWarehouseId());
+                inventory.setMaterialId(detail.getMaterialId());
                 inventory.setQuantity(detail.getQuantity());
                 inventory.setUnitPrice(detail.getUnitPrice());
                 inventory.setTotalPrice(detail.getTotalPrice());
-                inventoryRepository.save(inventory);
+                inventoryMapper.insert(inventory);
             }
         }
     }
 
     @Override
     public Optional<InStock> findById(Long id) {
-        return inStockRepository.findById(id);
+        return Optional.ofNullable(getById(id));
     }
 
     @Override
     public List<InStock> findAll() {
-        return inStockRepository.findAll();
+        return list();
     }
 
     @Override
-    public Page<InStock> findAll(Pageable pageable) {
-        return inStockRepository.findAll(pageable);
+    public Page<InStock> findAll(Page<InStock> pageable) {
+        return page(pageable);
     }
 
     @Override
     public void deleteById(Long id) {
-        inStockRepository.deleteById(id);
+        removeById(id);
     }
 
     @Override
     public boolean existsByOrderNo(String orderNo) {
-        return inStockRepository.existsByOrderNo(orderNo);
+        LambdaQueryWrapper<InStock> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(InStock::getOrderNo, orderNo);
+        return count(wrapper) > 0;
     }
 }

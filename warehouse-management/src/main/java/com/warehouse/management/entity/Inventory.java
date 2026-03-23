@@ -1,16 +1,14 @@
 package com.warehouse.management.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import java.math.BigDecimal;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@Entity
-@Table(name = "biz_inventory", uniqueConstraints = {
-        @UniqueConstraint(columnNames = {"warehouse_id", "material_id"})
-})
+@TableName("biz_inventory")
 public class Inventory extends BaseEntity {
     private BigDecimal quantity;
 
@@ -18,11 +16,9 @@ public class Inventory extends BaseEntity {
 
     private BigDecimal totalPrice;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "warehouse_id")
+    @TableField(exist = false)
     private Warehouse warehouse;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "material_id")
+    @TableField(exist = false)
     private Material material;
 }

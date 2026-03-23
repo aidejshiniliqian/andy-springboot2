@@ -4,9 +4,7 @@ import com.warehouse.management.common.Result;
 import com.warehouse.management.entity.Role;
 import com.warehouse.management.service.RoleService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -59,9 +57,9 @@ public class RoleController {
 
     @GetMapping("/page")
     public Result<Page<Role>> findPage(
-            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Page<Role> pageable = new Page<>(page, size);
         return Result.success(roleService.findAll(pageable));
     }
 }

@@ -4,9 +4,7 @@ import com.warehouse.management.common.Result;
 import com.warehouse.management.entity.OutStock;
 import com.warehouse.management.service.OutStockService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -63,9 +61,9 @@ public class OutStockController {
 
     @GetMapping("/page")
     public Result<Page<OutStock>> findPage(
-            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Page<OutStock> pageable = new Page<>(page, size);
         return Result.success(outStockService.findAll(pageable));
     }
 }

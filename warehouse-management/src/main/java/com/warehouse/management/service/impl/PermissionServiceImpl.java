@@ -1,54 +1,56 @@
 package com.warehouse.management.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.warehouse.management.entity.Permission;
-import com.warehouse.management.repository.PermissionRepository;
+import com.warehouse.management.mapper.PermissionMapper;
 import com.warehouse.management.service.PermissionService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
-public class PermissionServiceImpl implements PermissionService {
-
-    private final PermissionRepository permissionRepository;
+public class PermissionServiceImpl extends ServiceImpl<PermissionMapper, Permission> implements PermissionService {
 
     @Override
     public Permission save(Permission permission) {
-        return permissionRepository.save(permission);
+        saveOrUpdate(permission);
+        return permission;
     }
 
     @Override
     public Optional<Permission> findById(Long id) {
-        return permissionRepository.findById(id);
+        return Optional.ofNullable(getById(id));
     }
 
     @Override
     public List<Permission> findAll() {
-        return permissionRepository.findAll();
+        return list();
     }
 
     @Override
     public List<Permission> findRootPermissions() {
-        return permissionRepository.findByParentIdIsNull();
+        LambdaQueryWrapper<Permission> wrapper = new LambdaQueryWrapper<>();
+        wrapper.isNull(Permission::getParentId);
+        return list(wrapper);
     }
 
     @Override
     public List<Permission> findByParentId(Long parentId) {
-        return permissionRepository.findByParentId(parentId);
+        LambdaQueryWrapper<Permission> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Permission::getParentId, parentId);
+        return list(wrapper);
     }
 
     @Override
-    public Page<Permission> findAll(Pageable pageable) {
-        return permissionRepository.findAll(pageable);
+    public Page<Permission> findAll(Page<Permission> pageable) {
+        return page(pageable);
     }
 
     @Override
     public void deleteById(Long id) {
-        permissionRepository.deleteById(id);
+        removeById(id);
     }
 }

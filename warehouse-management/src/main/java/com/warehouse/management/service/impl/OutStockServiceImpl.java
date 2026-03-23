@@ -1,14 +1,16 @@
 package com.warehouse.management.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.warehouse.management.entity.OutStock;
 import com.warehouse.management.entity.OutStockDetail;
 import com.warehouse.management.entity.Inventory;
-import com.warehouse.management.repository.OutStockRepository;
-import com.warehouse.management.repository.InventoryRepository;
+import com.warehouse.management.mapper.OutStockDetailMapper;
+import com.warehouse.management.mapper.OutStockMapper;
+import com.warehouse.management.mapper.InventoryMapper;
 import com.warehouse.management.service.OutStockService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,28 +19,31 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
-public class OutStockServiceImpl implements OutStockService {
+public class OutStockServiceImpl extends ServiceImpl<OutStockMapper, OutStock> implements OutStockService {
 
-    private final OutStockRepository outStockRepository;
-    private final InventoryRepository inventoryRepository;
+    private final OutStockDetailMapper outStockDetailMapper;
+    private final InventoryMapper inventoryMapper;
 
     @Override
     public OutStock save(OutStock outStock) {
-        return outStockRepository.save(outStock);
+        saveOrUpdate(outStock);
+        return outStock;
     }
 
     @Override
     @Transactional
     public OutStock createOutStock(OutStock outStock) {
+        checkInventory(outStock);
+        saveOrUpdate(outStock);
+        
         if (outStock.getDetails() != null) {
             for (OutStockDetail detail : outStock.getDetails()) {
-                detail.setOutStock(outStock);
+                detail.setOutStockId(outStock.getId());
+                outStockDetailMapper.insert(detail);
             }
         }
-        checkInventory(outStock);
-        OutStock saved = outStockRepository.save(outStock);
-        updateInventory(saved);
-        return saved;
+        updateInventory(outStock);
+        return outStock;
     }
 
     private void checkInventory(OutStock outStock) {
@@ -47,18 +52,18 @@ public class OutStockServiceImpl implements OutStockService {
         }
 
         for (OutStockDetail detail : outStock.getDetails()) {
-            Optional<Inventory> inventoryOpt = inventoryRepository.findByWarehouseIdAndMaterialId(
-                    outStock.getWarehouse().getId(),
-                    detail.getMaterial().getId()
-            );
+            LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(Inventory::getWarehouseId, outStock.getWarehouseId())
+                   .eq(Inventory::getMaterialId, detail.getMaterialId());
+            
+            Inventory inventory = inventoryMapper.selectOne(wrapper);
 
-            if (inventoryOpt.isEmpty()) {
-                throw new RuntimeException("物资不存在库存: " + detail.getMaterial().getName());
+            if (inventory == null) {
+                throw new RuntimeException("物资不存在库存: 物资ID=" + detail.getMaterialId());
             }
 
-            Inventory inventory = inventoryOpt.get();
             if (inventory.getQuantity().compareTo(detail.getQuantity()) < 0) {
-                throw new RuntimeException("物资库存不足: " + detail.getMaterial().getName() +
+                throw new RuntimeException("物资库存不足: 物资ID=" + detail.getMaterialId() +
                         ", 现有库存: " + inventory.getQuantity() +
                         ", 需要: " + detail.getQuantity());
             }
@@ -71,42 +76,44 @@ public class OutStockServiceImpl implements OutStockService {
         }
 
         for (OutStockDetail detail : outStock.getDetails()) {
-            Optional<Inventory> existing = inventoryRepository.findByWarehouseIdAndMaterialId(
-                    outStock.getWarehouse().getId(),
-                    detail.getMaterial().getId()
-            );
+            LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(Inventory::getWarehouseId, outStock.getWarehouseId())
+                   .eq(Inventory::getMaterialId, detail.getMaterialId());
+            
+            Inventory existing = inventoryMapper.selectOne(wrapper);
 
-            if (existing.isPresent()) {
-                Inventory inventory = existing.get();
-                inventory.setQuantity(inventory.getQuantity().subtract(detail.getQuantity()));
-                inventory.setTotalPrice(inventory.getQuantity().multiply(inventory.getUnitPrice()));
-                inventoryRepository.save(inventory);
+            if (existing != null) {
+                existing.setQuantity(existing.getQuantity().subtract(detail.getQuantity()));
+                existing.setTotalPrice(existing.getQuantity().multiply(existing.getUnitPrice()));
+                inventoryMapper.updateById(existing);
             }
         }
     }
 
     @Override
     public Optional<OutStock> findById(Long id) {
-        return outStockRepository.findById(id);
+        return Optional.ofNullable(getById(id));
     }
 
     @Override
     public List<OutStock> findAll() {
-        return outStockRepository.findAll();
+        return list();
     }
 
     @Override
-    public Page<OutStock> findAll(Pageable pageable) {
-        return outStockRepository.findAll(pageable);
+    public Page<OutStock> findAll(Page<OutStock> pageable) {
+        return page(pageable);
     }
 
     @Override
     public void deleteById(Long id) {
-        outStockRepository.deleteById(id);
+        removeById(id);
     }
 
     @Override
     public boolean existsByOrderNo(String orderNo) {
-        return outStockRepository.existsByOrderNo(orderNo);
+        LambdaQueryWrapper<OutStock> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(OutStock::getOrderNo, orderNo);
+        return count(wrapper) > 0;
     }
 }

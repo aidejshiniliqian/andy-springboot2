@@ -1,9 +1,10 @@
 package com.warehouse.management.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.warehouse.management.entity.Permission;
 import com.warehouse.management.entity.Role;
 import com.warehouse.management.entity.User;
-import com.warehouse.management.repository.UserRepository;
+import com.warehouse.management.mapper.UserMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -20,12 +21,17 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class UserDetailsServiceImpl implements UserDetailsService {
 
-    private final UserRepository userRepository;
+    private final UserMapper userMapper;
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("用户不存在: " + username));
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(User::getUsername, username);
+        User user = userMapper.selectOne(wrapper);
+        
+        if (user == null) {
+            throw new UsernameNotFoundException("用户不存在: " + username);
+        }
 
         List<GrantedAuthority> authorities = new ArrayList<>();
 

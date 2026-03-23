@@ -1,6 +1,7 @@
-package com.warehouse.management.entity;
+﻿package com.warehouse.management.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import java.time.LocalDateTime;
@@ -8,38 +9,35 @@ import java.util.List;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@Entity
-@Table(name = "biz_out_stock")
+@TableName("biz_out_stock")
 public class OutStock extends BaseEntity {
-    @Column(unique = true, nullable = false, length = 50)
+    @TableField
     private String orderNo;
 
-    @Column(length = 100)
     private String receiver;
 
-    @Column(length = 11)
     private String receiverPhone;
 
-    @Column(length = 200)
     private String receiverAddress;
 
     private Integer type;
 
     private LocalDateTime outStockTime;
 
-    @Column(length = 500)
     private String remark;
 
     private Integer status;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "warehouse_id")
+    private Long warehouseId;
+
+    private Long operatorId;
+
+    @TableField(exist = false)
     private Warehouse warehouse;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "operator_id")
+    @TableField(exist = false)
     private User operator;
 
-    @OneToMany(mappedBy = "outStock", cascade = CascadeType.ALL, orphanRemoval = true)
+    @TableField(exist = false)
     private List<OutStockDetail> details;
 }

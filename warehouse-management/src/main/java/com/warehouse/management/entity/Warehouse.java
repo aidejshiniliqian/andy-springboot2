@@ -1,30 +1,30 @@
 package com.warehouse.management.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@Entity
-@Table(name = "biz_warehouse")
+@TableName("biz_warehouse")
 public class Warehouse extends BaseEntity {
-    @Column(nullable = false, length = 100)
+    @TableField
     private String name;
 
-    @Column(unique = true, length = 50)
+    @TableField
     private String code;
 
-    @Column(length = 200)
+    @TableField
     private String address;
 
-    @Column(length = 50)
+    @TableField
     private String manager;
 
-    @Column(length = 11)
+    @TableField
     private String phone;
 
-    @Column(length = 500)
+    @TableField
     private String remark;
 
     private Integer status;

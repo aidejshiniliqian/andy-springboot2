@@ -1,41 +1,38 @@
 package com.warehouse.management.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import java.util.Set;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@Entity
-@Table(name = "sys_user")
+@TableName("sys_user")
 public class User extends BaseEntity {
-    @Column(unique = true, nullable = false, length = 50)
+    @TableField
     private String username;
 
-    @Column(nullable = false, length = 100)
+    @TableField
     private String password;
 
-    @Column(length = 50)
+    @TableField
     private String realName;
 
-    @Column(length = 11)
+    @TableField
     private String phone;
 
-    @Column(length = 100)
+    @TableField
     private String email;
 
     private Integer status;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "department_id")
+    @TableField("department_id")
+    private Long departmentId;
+
+    @TableField(exist = false)
     private Department department;
 
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(
-            name = "sys_user_role",
-            joinColumns = @JoinColumn(name = "user_id"),
-            inverseJoinColumns = @JoinColumn(name = "role_id")
-    )
+    @TableField(exist = false)
     private Set<Role> roles;
 }

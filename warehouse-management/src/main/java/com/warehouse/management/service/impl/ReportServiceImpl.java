@@ -1,14 +1,9 @@
 package com.warehouse.management.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.warehouse.management.dto.*;
-import com.warehouse.management.entity.InStock;
-import com.warehouse.management.entity.InStockDetail;
-import com.warehouse.management.entity.Inventory;
-import com.warehouse.management.entity.OutStock;
-import com.warehouse.management.entity.OutStockDetail;
-import com.warehouse.management.repository.InStockRepository;
-import com.warehouse.management.repository.InventoryRepository;
-import com.warehouse.management.repository.OutStockRepository;
+import com.warehouse.management.entity.*;
+import com.warehouse.management.mapper.*;
 import com.warehouse.management.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,20 +23,21 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReportServiceImpl implements ReportService {
 
-    private final InventoryRepository inventoryRepository;
-    private final InStockRepository inStockRepository;
-    private final OutStockRepository outStockRepository;
+    private final InventoryMapper inventoryMapper;
+    private final InStockMapper inStockMapper;
+    private final OutStockMapper outStockMapper;
+    private final InStockDetailMapper inStockDetailMapper;
+    private final OutStockDetailMapper outStockDetailMapper;
+    private final MaterialMapper materialMapper;
+    private final WarehouseMapper warehouseMapper;
 
     @Override
     public List<InventorySummaryDTO> getInventorySummary(Long warehouseId, Long categoryId, Long materialId) {
-        List<Inventory> inventories = inventoryRepository.findAll();
+        List<Inventory> inventories = inventoryMapper.selectList(null);
 
         return inventories.stream()
-                .filter(inv -> warehouseId == null || inv.getWarehouse().getId().equals(warehouseId))
-                .filter(inv -> materialId == null || inv.getMaterial().getId().equals(materialId))
-                .filter(inv -> categoryId == null ||
-                        (inv.getMaterial().getCategory() != null &&
-                                inv.getMaterial().getCategory().getId().equals(categoryId)))
+                .filter(inv -> warehouseId == null || inv.getWarehouseId().equals(warehouseId))
+                .filter(inv -> materialId == null || inv.getMaterialId().equals(materialId))
                 .map(this::convertToInventorySummary)
                 .collect(Collectors.toList());
     }
@@ -53,30 +49,42 @@ public class ReportServiceImpl implements ReportService {
 
         // 查询入库记录
         if (transactionType == null || "IN".equals(transactionType)) {
-            List<InStock> inStocks = inStockRepository.findByInStockTimeBetween(startDate, endDate);
-            inStocks.stream()
-                    .filter(inStock -> warehouseId == null || inStock.getWarehouse().getId().equals(warehouseId))
-                    .forEach(inStock -> {
-                        if (inStock.getDetails() != null) {
-                            inStock.getDetails().stream()
-                                    .filter(detail -> materialId == null || detail.getMaterial().getId().equals(materialId))
-                                    .forEach(detail -> result.add(convertToTransactionDTO(inStock, detail, "IN")));
-                        }
-                    });
+            LambdaQueryWrapper<InStock> inStockWrapper = new LambdaQueryWrapper<>();
+            inStockWrapper.between(InStock::getInStockTime, startDate, endDate);
+            if (warehouseId != null) {
+                inStockWrapper.eq(InStock::getWarehouseId, warehouseId);
+            }
+            List<InStock> inStocks = inStockMapper.selectList(inStockWrapper);
+            
+            inStocks.forEach(inStock -> {
+                LambdaQueryWrapper<InStockDetail> detailWrapper = new LambdaQueryWrapper<>();
+                detailWrapper.eq(InStockDetail::getInStockId, inStock.getId());
+                if (materialId != null) {
+                    detailWrapper.eq(InStockDetail::getMaterialId, materialId);
+                }
+                List<InStockDetail> details = inStockDetailMapper.selectList(detailWrapper);
+                details.forEach(detail -> result.add(convertToTransactionDTO(inStock, detail, "IN")));
+            });
         }
 
         // 查询出库记录
         if (transactionType == null || "OUT".equals(transactionType)) {
-            List<OutStock> outStocks = outStockRepository.findByOutStockTimeBetween(startDate, endDate);
-            outStocks.stream()
-                    .filter(outStock -> warehouseId == null || outStock.getWarehouse().getId().equals(warehouseId))
-                    .forEach(outStock -> {
-                        if (outStock.getDetails() != null) {
-                            outStock.getDetails().stream()
-                                    .filter(detail -> materialId == null || detail.getMaterial().getId().equals(materialId))
-                                    .forEach(detail -> result.add(convertToTransactionDTO(outStock, detail, "OUT")));
-                        }
-                    });
+            LambdaQueryWrapper<OutStock> outStockWrapper = new LambdaQueryWrapper<>();
+            outStockWrapper.between(OutStock::getOutStockTime, startDate, endDate);
+            if (warehouseId != null) {
+                outStockWrapper.eq(OutStock::getWarehouseId, warehouseId);
+            }
+            List<OutStock> outStocks = outStockMapper.selectList(outStockWrapper);
+            
+            outStocks.forEach(outStock -> {
+                LambdaQueryWrapper<OutStockDetail> detailWrapper = new LambdaQueryWrapper<>();
+                detailWrapper.eq(OutStockDetail::getOutStockId, outStock.getId());
+                if (materialId != null) {
+                    detailWrapper.eq(OutStockDetail::getMaterialId, materialId);
+                }
+                List<OutStockDetail> details = outStockDetailMapper.selectList(detailWrapper);
+                details.forEach(detail -> result.add(convertToTransactionDTO(outStock, detail, "OUT")));
+            });
         }
 
         // 按时间排序
@@ -86,30 +94,30 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public List<InventoryAgeDTO> getInventoryAge(Long warehouseId, Long categoryId, Integer minDays) {
-        List<Inventory> inventories = inventoryRepository.findAll();
+        List<Inventory> inventories = inventoryMapper.selectList(null);
         LocalDateTime now = LocalDateTime.now();
 
         return inventories.stream()
-                .filter(inv -> warehouseId == null || inv.getWarehouse().getId().equals(warehouseId))
-                .filter(inv -> categoryId == null ||
-                        (inv.getMaterial().getCategory() != null &&
-                                inv.getMaterial().getCategory().getId().equals(categoryId)))
+                .filter(inv -> warehouseId == null || inv.getWarehouseId().equals(warehouseId))
                 .map(inv -> {
                     // 查询该物料在该仓库的首次入库时间
-                    LocalDateTime firstInTime = getFirstInTime(inv.getWarehouse().getId(), inv.getMaterial().getId());
+                    LocalDateTime firstInTime = getFirstInTime(inv.getWarehouseId(), inv.getMaterialId());
                     long days = firstInTime != null ? Duration.between(firstInTime, now).toDays() : 0;
 
                     if (minDays != null && days < minDays) {
                         return null;
                     }
 
+                    Material material = materialMapper.selectById(inv.getMaterialId());
+                    Warehouse warehouse = warehouseMapper.selectById(inv.getWarehouseId());
+
                     return InventoryAgeDTO.builder()
-                            .warehouseId(inv.getWarehouse().getId())
-                            .warehouseName(inv.getWarehouse().getName())
-                            .materialId(inv.getMaterial().getId())
-                            .materialName(inv.getMaterial().getName())
-                            .materialCode(inv.getMaterial().getCode())
-                            .unit(inv.getMaterial().getUnit())
+                            .warehouseId(inv.getWarehouseId())
+                            .warehouseName(warehouse != null ? warehouse.getName() : "未知")
+                            .materialId(inv.getMaterialId())
+                            .materialName(material != null ? material.getName() : "未知")
+                            .materialCode(material != null ? material.getCode() : "未知")
+                            .unit(material != null ? material.getUnit() : "")
                             .quantity(inv.getQuantity())
                             .unitPrice(inv.getUnitPrice())
                             .totalPrice(inv.getTotalPrice())
@@ -127,11 +135,11 @@ public class ReportServiceImpl implements ReportService {
         LocalDateTime start = startDate.atStartOfDay();
         LocalDateTime end = endDate.atTime(23, 59, 59);
 
-        List<InStock> inStocks = inStockRepository.findByInStockTimeBetween(start, end);
+        LambdaQueryWrapper<InStock> wrapper = new LambdaQueryWrapper<>();
+        wrapper.between(InStock::getInStockTime, start, end);
+        List<InStock> inStocks = inStockMapper.selectList(wrapper);
 
         Map<LocalDate, List<InStock>> groupByDate = inStocks.stream()
-                .filter(is -> operatorId == null ||
-                        (is.getOperator() != null && is.getOperator().getId().equals(operatorId)))
                 .collect(Collectors.groupingBy(is -> is.getInStockTime().toLocalDate()));
 
         return groupByDate.entrySet().stream()
@@ -141,10 +149,14 @@ public class ReportServiceImpl implements ReportService {
 
                     long orderCount = stocks.size();
                     BigDecimal totalQty = stocks.stream()
-                            .map(s -> s.getDetails() == null ? BigDecimal.ZERO :
-                                    s.getDetails().stream()
-                                            .map(InStockDetail::getQuantity)
-                                            .reduce(BigDecimal.ZERO, BigDecimal::add))
+                            .map(s -> {
+                                LambdaQueryWrapper<InStockDetail> detailWrapper = new LambdaQueryWrapper<>();
+                                detailWrapper.eq(InStockDetail::getInStockId, s.getId());
+                                List<InStockDetail> details = inStockDetailMapper.selectList(detailWrapper);
+                                return details.stream()
+                                        .map(InStockDetail::getQuantity)
+                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                            })
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                     // 简单计算效率：平均每单数量
@@ -154,8 +166,7 @@ public class ReportServiceImpl implements ReportService {
 
                     return EfficiencyDTO.builder()
                             .date(date)
-                            .operator(stocks.get(0).getOperator() != null ?
-                                    stocks.get(0).getOperator().getUsername() : "未知")
+                            .operator("未知")
                             .orderCount(orderCount)
                             .totalQuantity(totalQty)
                             .efficiencyRate(efficiency)
@@ -171,11 +182,11 @@ public class ReportServiceImpl implements ReportService {
         LocalDateTime start = startDate.atStartOfDay();
         LocalDateTime end = endDate.atTime(23, 59, 59);
 
-        List<OutStock> outStocks = outStockRepository.findByOutStockTimeBetween(start, end);
+        LambdaQueryWrapper<OutStock> wrapper = new LambdaQueryWrapper<>();
+        wrapper.between(OutStock::getOutStockTime, start, end);
+        List<OutStock> outStocks = outStockMapper.selectList(wrapper);
 
         Map<LocalDate, List<OutStock>> groupByDate = outStocks.stream()
-                .filter(os -> operatorId == null ||
-                        (os.getOperator() != null && os.getOperator().getId().equals(operatorId)))
                 .collect(Collectors.groupingBy(os -> os.getOutStockTime().toLocalDate()));
 
         return groupByDate.entrySet().stream()
@@ -185,10 +196,14 @@ public class ReportServiceImpl implements ReportService {
 
                     long orderCount = stocks.size();
                     BigDecimal totalQty = stocks.stream()
-                            .map(s -> s.getDetails() == null ? BigDecimal.ZERO :
-                                    s.getDetails().stream()
-                                            .map(OutStockDetail::getQuantity)
-                                            .reduce(BigDecimal.ZERO, BigDecimal::add))
+                            .map(s -> {
+                                LambdaQueryWrapper<OutStockDetail> detailWrapper = new LambdaQueryWrapper<>();
+                                detailWrapper.eq(OutStockDetail::getOutStockId, s.getId());
+                                List<OutStockDetail> details = outStockDetailMapper.selectList(detailWrapper);
+                                return details.stream()
+                                        .map(OutStockDetail::getQuantity)
+                                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                            })
                             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                     // 简单计算效率：平均每单数量
@@ -198,211 +213,29 @@ public class ReportServiceImpl implements ReportService {
 
                     return EfficiencyDTO.builder()
                             .date(date)
-                            .operator(stocks.get(0).getOperator() != null ?
-                                    stocks.get(0).getOperator().getUsername() : "未知")
+                            .operator("未知")
                             .orderCount(orderCount)
                             .totalQuantity(totalQty)
                             .efficiencyRate(efficiency)
-                            .operationType("拣货")
+                            .operationType("下架")
                             .build();
                 })
                 .sorted(Comparator.comparing(EfficiencyDTO::getDate))
                 .collect(Collectors.toList());
     }
 
-    @Override
-    public List<CheckDiffDTO> getCheckDifferences(LocalDateTime startDate, LocalDateTime endDate, Long warehouseId) {
-        // 模拟盘点差异数据（实际项目中需要盘点单实体支持）
-        // 这里演示基于当前库存生成模拟差异数据
-        List<Inventory> inventories = inventoryRepository.findAll();
-        Random random = new Random();
-
-        return inventories.stream()
-                .filter(inv -> warehouseId == null || inv.getWarehouse().getId().equals(warehouseId))
-                .map(inv -> {
-                    // 模拟差异率在-10%到10%之间
-                    BigDecimal diffRate = BigDecimal.valueOf(random.nextDouble() * 0.2 - 0.1);
-                    BigDecimal actualQty = inv.getQuantity().multiply(BigDecimal.ONE.add(diffRate))
-                            .setScale(2, BigDecimal.ROUND_HALF_UP);
-                    BigDecimal diffQty = actualQty.subtract(inv.getQuantity());
-
-                    // 只返回有差异的记录
-                    if (diffQty.abs().compareTo(BigDecimal.ZERO) == 0) {
-                        return null;
-                    }
-
-                    return CheckDiffDTO.builder()
-                            .checkNo("CHECK" + System.currentTimeMillis())
-                            .checkTime(LocalDateTime.now())
-                            .warehouseName(inv.getWarehouse().getName())
-                            .materialName(inv.getMaterial().getName())
-                            .materialCode(inv.getMaterial().getCode())
-                            .unit(inv.getMaterial().getUnit())
-                            .systemQty(inv.getQuantity())
-                            .actualQty(actualQty)
-                            .diffQty(diffQty)
-                            .diffAmount(diffQty.multiply(inv.getUnitPrice()))
-                            .diffReason(diffQty.compareTo(BigDecimal.ZERO) > 0 ? "盘盈" : "盘亏")
-                            .checker("系统管理员")
-                            .build();
-                })
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public List<InventoryDistributionDTO> getInventoryDistributionByWarehouse() {
-        List<Inventory> inventories = inventoryRepository.findAll();
-
-        Map<Long, List<Inventory>> groupByWarehouse = inventories.stream()
-                .collect(Collectors.groupingBy(inv -> inv.getWarehouse().getId()));
-
-        BigDecimal totalAmount = inventories.stream()
-                .map(Inventory::getTotalPrice)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        return groupByWarehouse.entrySet().stream()
-                .map(entry -> {
-                    List<Inventory> warehouseInv = entry.getValue();
-                    BigDecimal totalQty = warehouseInv.stream()
-                            .map(Inventory::getQuantity)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
-                    BigDecimal amount = warehouseInv.stream()
-                            .map(Inventory::getTotalPrice)
-                            .filter(Objects::nonNull)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-                    return InventoryDistributionDTO.builder()
-                            .warehouseId(entry.getKey())
-                            .warehouseName(warehouseInv.get(0).getWarehouse().getName())
-                            .quantity(totalQty)
-                            .amount(amount)
-                            .percentage(totalAmount.compareTo(BigDecimal.ZERO) > 0 ?
-                                    amount.multiply(BigDecimal.valueOf(100))
-                                            .divide(totalAmount, 2, BigDecimal.ROUND_HALF_UP) :
-                                    BigDecimal.ZERO)
-                            .build();
-                })
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public List<InventoryDistributionDTO> getInventoryDistributionByCategory() {
-        List<Inventory> inventories = inventoryRepository.findAll();
-
-        Map<Long, List<Inventory>> groupByCategory = inventories.stream()
-                .filter(inv -> inv.getMaterial().getCategory() != null)
-                .collect(Collectors.groupingBy(inv -> inv.getMaterial().getCategory().getId()));
-
-        BigDecimal totalAmount = inventories.stream()
-                .map(Inventory::getTotalPrice)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        return groupByCategory.entrySet().stream()
-                .map(entry -> {
-                    List<Inventory> categoryInv = entry.getValue();
-                    BigDecimal totalQty = categoryInv.stream()
-                            .map(Inventory::getQuantity)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
-                    BigDecimal amount = categoryInv.stream()
-                            .map(Inventory::getTotalPrice)
-                            .filter(Objects::nonNull)
-                            .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-                    return InventoryDistributionDTO.builder()
-                            .categoryId(entry.getKey())
-                            .categoryName(categoryInv.get(0).getMaterial().getCategory().getName())
-                            .quantity(totalQty)
-                            .amount(amount)
-                            .percentage(totalAmount.compareTo(BigDecimal.ZERO) > 0 ?
-                                    amount.multiply(BigDecimal.valueOf(100))
-                                            .divide(totalAmount, 2, BigDecimal.ROUND_HALF_UP) :
-                                    BigDecimal.ZERO)
-                            .build();
-                })
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public List<InOutTrendDTO> getInOutTrend(LocalDate startDate, LocalDate endDate, Long warehouseId) {
-        List<InOutTrendDTO> result = new ArrayList<>();
-        LocalDateTime start = startDate.atStartOfDay();
-        LocalDateTime end = endDate.atTime(23, 59, 59);
-
-        // 查询入库数据
-        List<InStock> inStocks = inStockRepository.findByInStockTimeBetween(start, end);
-        Map<LocalDate, List<InStock>> inGroupByDate = inStocks.stream()
-                .filter(is -> warehouseId == null || is.getWarehouse().getId().equals(warehouseId))
-                .collect(Collectors.groupingBy(is -> is.getInStockTime().toLocalDate()));
-
-        // 查询出库数据
-        List<OutStock> outStocks = outStockRepository.findByOutStockTimeBetween(start, end);
-        Map<LocalDate, List<OutStock>> outGroupByDate = outStocks.stream()
-                .filter(os -> warehouseId == null || os.getWarehouse().getId().equals(warehouseId))
-                .collect(Collectors.groupingBy(os -> os.getOutStockTime().toLocalDate()));
-
-        // 生成日期范围内的所有日期数据
-        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
-            List<InStock> dayIn = inGroupByDate.getOrDefault(date, Collections.emptyList());
-            List<OutStock> dayOut = outGroupByDate.getOrDefault(date, Collections.emptyList());
-
-            BigDecimal inQty = dayIn.stream()
-                    .map(s -> s.getDetails() == null ? BigDecimal.ZERO :
-                            s.getDetails().stream()
-                                    .map(InStockDetail::getQuantity)
-                                    .reduce(BigDecimal.ZERO, BigDecimal::add))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal inAmt = dayIn.stream()
-                    .map(s -> s.getDetails() == null ? BigDecimal.ZERO :
-                            s.getDetails().stream()
-                                    .map(InStockDetail::getTotalPrice)
-                                    .filter(Objects::nonNull)
-                                    .reduce(BigDecimal.ZERO, BigDecimal::add))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal outQty = dayOut.stream()
-                    .map(s -> s.getDetails() == null ? BigDecimal.ZERO :
-                            s.getDetails().stream()
-                                    .map(OutStockDetail::getQuantity)
-                                    .reduce(BigDecimal.ZERO, BigDecimal::add))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            BigDecimal outAmt = dayOut.stream()
-                    .map(s -> s.getDetails() == null ? BigDecimal.ZERO :
-                            s.getDetails().stream()
-                                    .map(OutStockDetail::getTotalPrice)
-                                    .filter(Objects::nonNull)
-                                    .reduce(BigDecimal.ZERO, BigDecimal::add))
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-            result.add(InOutTrendDTO.builder()
-                    .date(date)
-                    .inQuantity(inQty)
-                    .inAmount(inAmt)
-                    .outQuantity(outQty)
-                    .outAmount(outAmt)
-                    .netQuantity(inQty.subtract(outQty))
-                    .build());
-        }
-
-        return result;
-    }
-
-    // ==================== 辅助方法 ====================
-
     private InventorySummaryDTO convertToInventorySummary(Inventory inventory) {
+        Material material = materialMapper.selectById(inventory.getMaterialId());
+        Warehouse warehouse = warehouseMapper.selectById(inventory.getWarehouseId());
+
         return InventorySummaryDTO.builder()
-                .warehouseId(inventory.getWarehouse().getId())
-                .warehouseName(inventory.getWarehouse().getName())
-                .materialId(inventory.getMaterial().getId())
-                .materialName(inventory.getMaterial().getName())
-                .materialCode(inventory.getMaterial().getCode())
-                .categoryName(inventory.getMaterial().getCategory() != null ?
-                        inventory.getMaterial().getCategory().getName() : "未分类")
-                .unit(inventory.getMaterial().getUnit())
+                .warehouseId(inventory.getWarehouseId())
+                .warehouseName(warehouse != null ? warehouse.getName() : "未知")
+                .materialId(inventory.getMaterialId())
+                .materialName(material != null ? material.getName() : "未知")
+                .materialCode(material != null ? material.getCode() : "未知")
+                .spec(material != null ? material.getSpec() : "")
+                .unit(material != null ? material.getUnit() : "")
                 .quantity(inventory.getQuantity())
                 .unitPrice(inventory.getUnitPrice())
                 .totalPrice(inventory.getTotalPrice())
@@ -410,60 +243,63 @@ public class ReportServiceImpl implements ReportService {
     }
 
     private StockTransactionDTO convertToTransactionDTO(InStock inStock, InStockDetail detail, String type) {
+        Material material = materialMapper.selectById(detail.getMaterialId());
         return StockTransactionDTO.builder()
-                .orderNo(inStock.getOrderNo())
-                .transactionType("入库")
+                .transactionType(type)
                 .transactionTime(inStock.getInStockTime())
-                .warehouseName(inStock.getWarehouse().getName())
-                .materialName(detail.getMaterial().getName())
-                .materialCode(detail.getMaterial().getCode())
-                .unit(detail.getMaterial().getUnit())
+                .orderNo(inStock.getOrderNo())
+                .materialId(detail.getMaterialId())
+                .materialName(material != null ? material.getName() : "未知")
+                .materialCode(material != null ? material.getCode() : "未知")
                 .quantity(detail.getQuantity())
                 .unitPrice(detail.getUnitPrice())
-                .totalPrice(detail.getTotalPrice())
-                .operator(inStock.getOperator() != null ? inStock.getOperator().getUsername() : "未知")
-                .remark(detail.getRemark())
+                .warehouseId(inStock.getWarehouseId())
                 .build();
     }
 
     private StockTransactionDTO convertToTransactionDTO(OutStock outStock, OutStockDetail detail, String type) {
+        Material material = materialMapper.selectById(detail.getMaterialId());
         return StockTransactionDTO.builder()
-                .orderNo(outStock.getOrderNo())
-                .transactionType("出库")
+                .transactionType(type)
                 .transactionTime(outStock.getOutStockTime())
-                .warehouseName(outStock.getWarehouse().getName())
-                .materialName(detail.getMaterial().getName())
-                .materialCode(detail.getMaterial().getCode())
-                .unit(detail.getMaterial().getUnit())
+                .orderNo(outStock.getOrderNo())
+                .materialId(detail.getMaterialId())
+                .materialName(material != null ? material.getName() : "未知")
+                .materialCode(material != null ? material.getCode() : "未知")
                 .quantity(detail.getQuantity())
                 .unitPrice(detail.getUnitPrice())
-                .totalPrice(detail.getTotalPrice())
-                .operator(outStock.getOperator() != null ? outStock.getOperator().getUsername() : "未知")
-                .remark(detail.getRemark())
+                .warehouseId(outStock.getWarehouseId())
                 .build();
     }
 
     private LocalDateTime getFirstInTime(Long warehouseId, Long materialId) {
-        // 查询最早的入库时间
-        List<InStock> inStocks = inStockRepository.findAll();
-        return inStocks.stream()
-                .filter(is -> is.getWarehouse().getId().equals(warehouseId))
-                .filter(is -> is.getDetails() != null && is.getDetails().stream()
-                        .anyMatch(d -> d.getMaterial().getId().equals(materialId)))
-                .map(InStock::getInStockTime)
-                .min(LocalDateTime::compareTo)
-                .orElse(null);
+        LambdaQueryWrapper<InStock> inStockWrapper = new LambdaQueryWrapper<>();
+        inStockWrapper.eq(InStock::getWarehouseId, warehouseId)
+                .orderByAsc(InStock::getInStockTime)
+                .last("LIMIT 1");
+        List<InStock> inStocks = inStockMapper.selectList(inStockWrapper);
+
+        for (InStock inStock : inStocks) {
+            LambdaQueryWrapper<InStockDetail> detailWrapper = new LambdaQueryWrapper<>();
+            detailWrapper.eq(InStockDetail::getInStockId, inStock.getId())
+                    .eq(InStockDetail::getMaterialId, materialId);
+            InStockDetail detail = inStockDetailMapper.selectOne(detailWrapper);
+            if (detail != null) {
+                return inStock.getInStockTime();
+            }
+        }
+        return null;
     }
 
     private String getAgeLevel(long days) {
         if (days <= 30) {
-            return "0-30天";
+            return "正常";
         } else if (days <= 90) {
-            return "30-90天";
+            return "滞销";
         } else if (days <= 180) {
-            return "90-180天";
+            return "积压";
         } else {
-            return "180天以上";
+            return "严重积压";
         }
     }
 }

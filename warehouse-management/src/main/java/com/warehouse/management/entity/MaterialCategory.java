@@ -1,32 +1,31 @@
-package com.warehouse.management.entity;
+﻿package com.warehouse.management.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import java.util.List;
 
 @Data
 @EqualsAndHashCode(callSuper = true)
-@Entity
-@Table(name = "biz_material_category")
+@TableName("biz_material_category")
 public class MaterialCategory extends BaseEntity {
-    @Column(nullable = false, length = 100)
     private String name;
 
-    @Column(unique = true, length = 50)
+    @TableField
     private String code;
 
-    @Column(length = 500)
     private String remark;
 
     private Integer status;
 
     private Integer sort;
 
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "parent_id")
+    private Long parentId;
+
+    @TableField(exist = false)
     private MaterialCategory parent;
 
-    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
+    @TableField(exist = false)
     private List<MaterialCategory> children;
 }

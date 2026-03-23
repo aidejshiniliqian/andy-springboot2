@@ -1,49 +1,50 @@
 package com.warehouse.management.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.warehouse.management.entity.Inventory;
-import com.warehouse.management.repository.InventoryRepository;
+import com.warehouse.management.mapper.InventoryMapper;
 import com.warehouse.management.service.InventoryService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Optional;
 
 @Service
-@RequiredArgsConstructor
-public class InventoryServiceImpl implements InventoryService {
-
-    private final InventoryRepository inventoryRepository;
+public class InventoryServiceImpl extends ServiceImpl<InventoryMapper, Inventory> implements InventoryService {
 
     @Override
     public Inventory save(Inventory inventory) {
-        return inventoryRepository.save(inventory);
+        saveOrUpdate(inventory);
+        return inventory;
     }
 
     @Override
     public Optional<Inventory> findById(Long id) {
-        return inventoryRepository.findById(id);
+        return Optional.ofNullable(getById(id));
     }
 
     @Override
     public Optional<Inventory> findByWarehouseIdAndMaterialId(Long warehouseId, Long materialId) {
-        return inventoryRepository.findByWarehouseIdAndMaterialId(warehouseId, materialId);
+        LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Inventory::getWarehouseId, warehouseId)
+               .eq(Inventory::getMaterialId, materialId);
+        return Optional.ofNullable(getOne(wrapper));
     }
 
     @Override
     public List<Inventory> findAll() {
-        return inventoryRepository.findAll();
+        return list();
     }
 
     @Override
-    public Page<Inventory> findAll(Pageable pageable) {
-        return inventoryRepository.findAll(pageable);
+    public Page<Inventory> findAll(Page<Inventory> pageable) {
+        return page(pageable);
     }
 
     @Override
     public void deleteById(Long id) {
-        inventoryRepository.deleteById(id);
+        removeById(id);
     }
 }

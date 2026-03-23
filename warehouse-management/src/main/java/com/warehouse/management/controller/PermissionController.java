@@ -4,9 +4,7 @@ import com.warehouse.management.common.Result;
 import com.warehouse.management.entity.Permission;
 import com.warehouse.management.service.PermissionService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -66,9 +64,9 @@ public class PermissionController {
 
     @GetMapping("/page")
     public Result<Page<Permission>> findPage(
-            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Pageable pageable = PageRequest.of(page, size);
+        Page<Permission> pageable = new Page<>(page, size);
         return Result.success(permissionService.findAll(pageable));
     }
 }
