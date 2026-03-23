@@ -1,41 +1,32 @@
 package com.andy.warehouse.common;
 
+import com.baomidou.mybatisplus.annotation.*;
 import com.fasterxml.jackson.annotation.JsonFormat;
-import jakarta.persistence.Column;
-import jakarta.persistence.EntityListeners;
-import jakarta.persistence.MappedSuperclass;
 import lombok.Data;
-import org.springframework.data.annotation.CreatedBy;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedBy;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 
 @Data
-@MappedSuperclass
-@EntityListeners(AuditingEntityListener.class)
 public abstract class BaseEntity {
 
-    @CreatedDate
-    @Column(name = "created_at", updatable = false)
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
+    @TableField(fill = FieldFill.INSERT)
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createdAt;
 
-    @CreatedBy
-    @Column(name = "created_by", updatable = false, length = 50)
+    @TableField(fill = FieldFill.INSERT)
     private String createdBy;
 
-    @LastModifiedDate
-    @Column(name = "updated_at")
+    @TableField(fill = FieldFill.INSERT_UPDATE)
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updatedAt;
 
-    @LastModifiedBy
-    @Column(name = "updated_by", length = 50)
+    @TableField(fill = FieldFill.INSERT_UPDATE)
     private String updatedBy;
 
-    @Column(name = "deleted", nullable = false)
-    private Boolean deleted = false;
+    @TableLogic
+    @TableField(fill = FieldFill.INSERT)
+    private Boolean deleted;
 }

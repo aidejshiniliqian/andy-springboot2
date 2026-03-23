@@ -2,28 +2,27 @@ package com.andy.warehouse.service;
 
 import com.andy.warehouse.common.PageResult;
 import com.andy.warehouse.dto.report.*;
-import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 public interface ReportService {
 
-    PageResult<StockSummaryReport> getStockSummaryReport(Long warehouseId, Long categoryId, String keyword, Pageable pageable);
+    PageResult<StockSummaryReport> getStockSummaryReport(Long warehouseId, Long categoryId, String keyword, Integer pageNum, Integer pageSize);
 
-    PageResult<StockInSummaryReport> getStockInSummaryReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
+    PageResult<StockInSummaryReport> getStockInSummaryReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize);
 
-    PageResult<StockOutSummaryReport> getStockOutSummaryReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
+    PageResult<StockOutSummaryReport> getStockOutSummaryReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize);
 
-    PageResult<StockTransactionDetail> getStockTransactionDetail(Long warehouseId, Long materialId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
+    PageResult<StockTransactionDetail> getStockTransactionDetail(Long warehouseId, Long materialId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize);
 
-    PageResult<StockAgeAnalysis> getStockAgeAnalysis(Long warehouseId, Integer daysThreshold, Pageable pageable);
+    PageResult<StockAgeAnalysis> getStockAgeAnalysis(Long warehouseId, Integer daysThreshold, Integer pageNum, Integer pageSize);
 
-    PageResult<PickingEfficiencyReport> getPickingEfficiencyReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
+    PageResult<PickingEfficiencyReport> getPickingEfficiencyReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize);
 
-    PageResult<ShelvingEfficiencyReport> getShelvingEfficiencyReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable);
+    PageResult<ShelvingEfficiencyReport> getShelvingEfficiencyReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize);
 
-    PageResult<InventoryVarianceReport> getInventoryVarianceReport(Long warehouseId, Pageable pageable);
+    PageResult<InventoryVarianceReport> getInventoryVarianceReport(Long warehouseId, Integer pageNum, Integer pageSize);
 
     DashboardVO getDashboard();
 

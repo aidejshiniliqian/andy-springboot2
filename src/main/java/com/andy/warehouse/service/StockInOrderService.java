@@ -2,7 +2,7 @@ package com.andy.warehouse.service;
 
 import com.andy.warehouse.dto.StockInOrderCreateRequest;
 import com.andy.warehouse.entity.StockInOrder;
-import org.springframework.data.domain.Page;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 import java.util.List;
 

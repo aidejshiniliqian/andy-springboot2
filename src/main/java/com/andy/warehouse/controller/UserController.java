@@ -7,11 +7,11 @@ import com.andy.warehouse.entity.Permission;
 import com.andy.warehouse.entity.Role;
 import com.andy.warehouse.entity.User;
 import com.andy.warehouse.service.UserService;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -25,6 +25,12 @@ import java.util.Set;
 public class UserController {
 
     private final UserService userService;
+
+    @Operation(summary = "用户登录")
+    @PostMapping("/login")
+    public Result<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+        return Result.success(userService.login(request));
+    }
 
     @Operation(summary = "创建用户")
     @PreAuthorize("hasAuthority('user:create')")
@@ -64,7 +70,7 @@ public class UserController {
             @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String keyword) {
         Page<User> page = userService.getPage(orgId, pageNum, pageSize, keyword);
-        return Result.success(PageResult.of(page.getContent(), page.getTotalElements(), pageNum, pageSize));
+        return Result.success(PageResult.of(page.getRecords(), page.getTotal(), pageNum, pageSize));
     }
 
     @Operation(summary = "根据角色查询用户")
@@ -72,13 +78,6 @@ public class UserController {
     @GetMapping("/role/{roleId}")
     public Result<List<User>> getByRoleId(@PathVariable Long roleId) {
         return Result.success(userService.getByRoleId(roleId));
-    }
-
-    @Operation(summary = "根据部门查询用户")
-    @PreAuthorize("hasAuthority('user:view')")
-    @GetMapping("/dept/{deptId}")
-    public Result<List<User>> getByDeptId(@PathVariable Long deptId) {
-        return Result.success(userService.getByDeptId(deptId));
     }
 
     @Operation(summary = "修改密码")
@@ -99,7 +98,7 @@ public class UserController {
 
     @Operation(summary = "分配角色")
     @PreAuthorize("hasAuthority('user:update')")
-    @PutMapping("/{id}/roles")
+    @PostMapping("/{id}/roles")
     public Result<Void> assignRoles(@PathVariable Long id, @RequestBody Set<Long> roleIds) {
         userService.assignRoles(id, roleIds);
         return Result.success();

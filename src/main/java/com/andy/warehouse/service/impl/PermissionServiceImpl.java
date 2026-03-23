@@ -4,8 +4,9 @@ import com.andy.warehouse.common.BusinessException;
 import com.andy.warehouse.dto.PermissionCreateRequest;
 import com.andy.warehouse.dto.PermissionUpdateRequest;
 import com.andy.warehouse.entity.Permission;
-import com.andy.warehouse.repository.PermissionRepository;
+import com.andy.warehouse.mapper.PermissionMapper;
 import com.andy.warehouse.service.PermissionService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,12 +20,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class PermissionServiceImpl implements PermissionService {
 
-    private final PermissionRepository permissionRepository;
+    private final PermissionMapper permissionMapper;
 
     @Override
     @Transactional
     public Permission create(PermissionCreateRequest request) {
-        if (request.getCode() != null && permissionRepository.existsByCode(request.getCode())) {
+        if (request.getCode() != null && permissionMapper.existsByCode(request.getCode())) {
             throw new BusinessException("权限编码已存在");
         }
         Permission permission = new Permission();
@@ -37,16 +38,16 @@ public class PermissionServiceImpl implements PermissionService {
         permission.setIcon(request.getIcon());
         permission.setSortOrder(request.getSortOrder());
         permission.setStatus(request.getStatus());
-        return permissionRepository.save(permission);
+        permissionMapper.insert(permission);
+        return permission;
     }
 
     @Override
     @Transactional
     public Permission update(PermissionUpdateRequest request) {
-        Permission permission = permissionRepository.findById(request.getId())
-                .orElseThrow(() -> new BusinessException("权限不存在"));
-        if (permission.getDeleted()) {
-            throw new BusinessException("权限已被删除");
+        Permission permission = permissionMapper.selectById(request.getId());
+        if (permission == null || permission.getDeleted()) {
+            throw new BusinessException("权限不存在");
         }
         if (request.getName() != null) {
             permission.setName(request.getName());
@@ -66,47 +67,52 @@ public class PermissionServiceImpl implements PermissionService {
         if (request.getStatus() != null) {
             permission.setStatus(request.getStatus());
         }
-        return permissionRepository.save(permission);
+        permissionMapper.updateById(permission);
+        return permission;
     }
 
     @Override
     @Transactional
     public void delete(Long id) {
-        Permission permission = permissionRepository.findById(id)
-                .orElseThrow(() -> new BusinessException("权限不存在"));
-        List<Permission> children = permissionRepository.findByParentId(id);
+        Permission permission = permissionMapper.selectById(id);
+        if (permission == null) {
+            throw new BusinessException("权限不存在");
+        }
+        List<Permission> children = permissionMapper.findByParentId(id);
         if (!children.isEmpty()) {
             throw new BusinessException("存在子权限，无法删除");
         }
         permission.setDeleted(true);
-        permissionRepository.save(permission);
+        permissionMapper.updateById(permission);
     }
 
     @Override
     public Permission getById(Long id) {
-        return permissionRepository.findById(id)
-                .filter(p -> !p.getDeleted())
-                .orElseThrow(() -> new BusinessException("权限不存在"));
+        Permission permission = permissionMapper.selectById(id);
+        if (permission == null || permission.getDeleted()) {
+            throw new BusinessException("权限不存在");
+        }
+        return permission;
     }
 
     @Override
     public List<Permission> getAll() {
-        return permissionRepository.findAllActive();
+        return permissionMapper.findAllActive();
     }
 
     @Override
     public List<Permission> getRootPermissions() {
-        return permissionRepository.findRootPermissions();
+        return permissionMapper.findRootPermissions();
     }
 
     @Override
     public List<Permission> getChildren(Long parentId) {
-        return permissionRepository.findByParentId(parentId);
+        return permissionMapper.findByParentId(parentId);
     }
 
     @Override
     public List<Permission> getTree() {
-        List<Permission> all = permissionRepository.findAllActive();
+        List<Permission> all = permissionMapper.findAllActive();
         Map<Long, Permission> map = new HashMap<>();
         List<Permission> roots = new ArrayList<>();
         for (Permission perm : all) {
@@ -115,8 +121,6 @@ public class PermissionServiceImpl implements PermissionService {
         for (Permission perm : all) {
             if (perm.getParentId() == null) {
                 roots.add(perm);
-            } else {
-                Permission parent = map.get(perm.getParentId());
             }
         }
         return roots;

@@ -5,11 +5,11 @@ import com.andy.warehouse.common.Result;
 import com.andy.warehouse.dto.StockInOrderCreateRequest;
 import com.andy.warehouse.entity.StockInOrder;
 import com.andy.warehouse.service.StockInOrderService;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -77,6 +77,6 @@ public class StockInOrderController {
             @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String keyword) {
         Page<StockInOrder> page = stockInOrderService.getPage(warehouseId, pageNum, pageSize, keyword);
-        return Result.success(PageResult.of(page.getContent(), page.getTotalElements(), pageNum, pageSize));
+        return Result.success(PageResult.of(page.getRecords(), page.getTotal(), pageNum, pageSize));
     }
 }

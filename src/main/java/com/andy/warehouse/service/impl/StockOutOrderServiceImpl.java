@@ -3,19 +3,20 @@ package com.andy.warehouse.service.impl;
 import com.andy.warehouse.common.BusinessException;
 import com.andy.warehouse.dto.StockOutOrderCreateRequest;
 import com.andy.warehouse.dto.StockOutOrderItemRequest;
-import com.andy.warehouse.entity.*;
-import com.andy.warehouse.repository.MaterialRepository;
-import com.andy.warehouse.repository.StockOutOrderRepository;
-import com.andy.warehouse.repository.WarehouseRepository;
+import com.andy.warehouse.entity.Material;
+import com.andy.warehouse.entity.StockOutOrder;
+import com.andy.warehouse.entity.StockOutOrderItem;
+import com.andy.warehouse.entity.Warehouse;
+import com.andy.warehouse.mapper.MaterialMapper;
+import com.andy.warehouse.mapper.StockOutOrderMapper;
+import com.andy.warehouse.mapper.WarehouseMapper;
 import com.andy.warehouse.security.SecurityUser;
 import com.andy.warehouse.service.StockOutOrderService;
 import com.andy.warehouse.service.StockService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,31 +34,36 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StockOutOrderServiceImpl implements StockOutOrderService {
 
-    private final StockOutOrderRepository orderRepository;
-    private final WarehouseRepository warehouseRepository;
-    private final MaterialRepository materialRepository;
+    private final StockOutOrderMapper orderMapper;
+    private final WarehouseMapper warehouseMapper;
+    private final MaterialMapper materialMapper;
     private final StockService stockService;
 
     @Override
     @Transactional
     public StockOutOrder create(StockOutOrderCreateRequest request) {
-        Warehouse warehouse = warehouseRepository.findById(request.getWarehouseId())
-                .orElseThrow(() -> new BusinessException("仓库不存在"));
+        Warehouse warehouse = warehouseMapper.selectById(request.getWarehouseId());
+        if (warehouse == null) {
+            throw new BusinessException("仓库不存在");
+        }
         StockOutOrder order = new StockOutOrder();
         order.setOrderNo(generateOrderNo("CK"));
         order.setOrderType(request.getOrderType());
-        order.setWarehouse(warehouse);
+        order.setWarehouseId(warehouse.getId());
         order.setReceiver(request.getReceiver());
         order.setOrderDate(request.getOrderDate() != null ? request.getOrderDate() : LocalDateTime.now());
         order.setStatus(0);
         order.setRemark(request.getRemark());
+        order.setItems(new ArrayList<>());
         BigDecimal totalAmount = BigDecimal.ZERO;
         for (StockOutOrderItemRequest itemRequest : request.getItems()) {
-            Material material = materialRepository.findById(itemRequest.getMaterialId())
-                    .orElseThrow(() -> new BusinessException("物资不存在: " + itemRequest.getMaterialId()));
+            Material material = materialMapper.selectById(itemRequest.getMaterialId());
+            if (material == null) {
+                throw new BusinessException("物资不存在: " + itemRequest.getMaterialId());
+            }
             StockOutOrderItem item = new StockOutOrderItem();
-            item.setOrder(order);
-            item.setMaterial(material);
+            item.setOrderId(order.getId());
+            item.setMaterialId(material.getId());
             item.setQuantity(itemRequest.getQuantity());
             item.setUnitPrice(itemRequest.getUnitPrice() != null ? itemRequest.getUnitPrice() : material.getPrice());
             item.setTotalPrice(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
@@ -71,7 +78,8 @@ public class StockOutOrderServiceImpl implements StockOutOrderService {
             order.setOperatorId(securityUser.getId());
             order.setOperatorName(securityUser.getUsername());
         }
-        return orderRepository.save(order);
+        orderMapper.insert(order);
+        return order;
     }
 
     private String generateOrderNo(String prefix) {
@@ -89,13 +97,13 @@ public class StockOutOrderServiceImpl implements StockOutOrderService {
         }
         for (StockOutOrderItem item : order.getItems()) {
             stockService.subtractStock(
-                    order.getWarehouse().getId(),
-                    item.getMaterial().getId(),
+                    order.getWarehouseId(),
+                    item.getMaterialId(),
                     item.getQuantity()
             );
         }
         order.setStatus(1);
-        orderRepository.save(order);
+        orderMapper.updateById(order);
     }
 
     @Override
@@ -106,7 +114,7 @@ public class StockOutOrderServiceImpl implements StockOutOrderService {
             throw new BusinessException("只有待审核状态的订单才能驳回");
         }
         order.setStatus(2);
-        orderRepository.save(order);
+        orderMapper.updateById(order);
     }
 
     @Override
@@ -117,36 +125,59 @@ public class StockOutOrderServiceImpl implements StockOutOrderService {
             throw new BusinessException("已审核的订单不能删除");
         }
         order.setDeleted(true);
-        orderRepository.save(order);
+        orderMapper.updateById(order);
     }
 
     @Override
     public StockOutOrder getById(Long id) {
-        return orderRepository.findById(id)
-                .filter(o -> !o.getDeleted())
-                .orElseThrow(() -> new BusinessException("出库单不存在"));
+        StockOutOrder order = orderMapper.selectById(id);
+        if (order == null || order.getDeleted()) {
+            throw new BusinessException("出库单不存在");
+        }
+        loadOrderRelations(order);
+        return order;
+    }
+
+    private void loadOrderRelations(StockOutOrder order) {
+        if (order.getWarehouseId() != null) {
+            Warehouse warehouse = warehouseMapper.selectById(order.getWarehouseId());
+            order.setWarehouse(warehouse);
+        }
+        List<StockOutOrderItem> items = orderMapper.findItemsByOrderId(order.getId());
+        order.setItems(items != null ? items : new ArrayList<>());
+        for (StockOutOrderItem item : order.getItems()) {
+            if (item.getMaterialId() != null) {
+                Material material = materialMapper.selectById(item.getMaterialId());
+                item.setMaterial(material);
+            }
+        }
     }
 
     @Override
     public List<StockOutOrder> getByWarehouseId(Long warehouseId) {
-        return orderRepository.findByWarehouseId(warehouseId);
+        List<StockOutOrder> orders = orderMapper.findByWarehouseId(warehouseId);
+        for (StockOutOrder order : orders) {
+            loadOrderRelations(order);
+        }
+        return orders;
     }
 
     @Override
     public Page<StockOutOrder> getPage(Long warehouseId, Integer pageNum, Integer pageSize, String keyword) {
-        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-        Pageable pageable = PageRequest.of(pageNum - 1, pageSize, sort);
-        Specification<StockOutOrder> spec = (root, query, cb) -> {
-            var predicates = cb.conjunction();
-            predicates = cb.and(predicates, cb.equal(root.get("deleted"), false));
-            if (warehouseId != null) {
-                predicates = cb.and(predicates, cb.equal(root.get("warehouse").get("id"), warehouseId));
-            }
-            if (StringUtils.hasText(keyword)) {
-                predicates = cb.and(predicates, cb.like(root.get("orderNo"), "%" + keyword + "%"));
-            }
-            return predicates;
-        };
-        return orderRepository.findAll(spec, pageable);
+        Page<StockOutOrder> page = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<StockOutOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(StockOutOrder::getDeleted, false);
+        if (warehouseId != null) {
+            wrapper.eq(StockOutOrder::getWarehouseId, warehouseId);
+        }
+        if (StringUtils.hasText(keyword)) {
+            wrapper.like(StockOutOrder::getOrderNo, keyword);
+        }
+        wrapper.orderByDesc(StockOutOrder::getCreatedAt);
+        IPage<StockOutOrder> orderPage = orderMapper.selectPage(page, wrapper);
+        for (StockOutOrder order : orderPage.getRecords()) {
+            loadOrderRelations(order);
+        }
+        return (Page<StockOutOrder>) orderPage;
     }
 }

@@ -5,15 +5,13 @@ import com.andy.warehouse.dto.MaterialCreateRequest;
 import com.andy.warehouse.dto.MaterialUpdateRequest;
 import com.andy.warehouse.entity.Material;
 import com.andy.warehouse.entity.MaterialCategory;
-import com.andy.warehouse.repository.MaterialCategoryRepository;
-import com.andy.warehouse.repository.MaterialRepository;
+import com.andy.warehouse.mapper.MaterialCategoryMapper;
+import com.andy.warehouse.mapper.MaterialMapper;
 import com.andy.warehouse.service.MaterialService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -24,13 +22,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MaterialServiceImpl implements MaterialService {
 
-    private final MaterialRepository materialRepository;
-    private final MaterialCategoryRepository categoryRepository;
+    private final MaterialMapper materialMapper;
+    private final MaterialCategoryMapper categoryMapper;
 
     @Override
     @Transactional
     public Material create(MaterialCreateRequest request) {
-        if (request.getCode() != null && materialRepository.existsByCode(request.getCode())) {
+        if (request.getCode() != null && materialMapper.existsByCode(request.getCode())) {
             throw new BusinessException("物资编码已存在");
         }
         Material material = new Material();
@@ -45,21 +43,17 @@ public class MaterialServiceImpl implements MaterialService {
         material.setMaxStock(request.getMaxStock());
         material.setDescription(request.getDescription());
         material.setStatus(request.getStatus());
-        if (request.getCategoryId() != null) {
-            MaterialCategory category = categoryRepository.findById(request.getCategoryId())
-                    .orElseThrow(() -> new BusinessException("物资分类不存在"));
-            material.setCategory(category);
-        }
-        return materialRepository.save(material);
+        material.setCategoryId(request.getCategoryId());
+        materialMapper.insert(material);
+        return material;
     }
 
     @Override
     @Transactional
     public Material update(MaterialUpdateRequest request) {
-        Material material = materialRepository.findById(request.getId())
-                .orElseThrow(() -> new BusinessException("物资不存在"));
-        if (material.getDeleted()) {
-            throw new BusinessException("物资已被删除");
+        Material material = materialMapper.selectById(request.getId());
+        if (material == null || material.getDeleted()) {
+            throw new BusinessException("物资不存在");
         }
         if (request.getName() != null) {
             material.setName(request.getName());
@@ -89,73 +83,97 @@ public class MaterialServiceImpl implements MaterialService {
             material.setDescription(request.getDescription());
         }
         if (request.getCategoryId() != null) {
-            MaterialCategory category = categoryRepository.findById(request.getCategoryId())
-                    .orElseThrow(() -> new BusinessException("物资分类不存在"));
-            material.setCategory(category);
+            material.setCategoryId(request.getCategoryId());
         }
         if (request.getStatus() != null) {
             material.setStatus(request.getStatus());
         }
-        return materialRepository.save(material);
+        materialMapper.updateById(material);
+        return material;
     }
 
     @Override
     @Transactional
     public void delete(Long id) {
-        Material material = materialRepository.findById(id)
-                .orElseThrow(() -> new BusinessException("物资不存在"));
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            throw new BusinessException("物资不存在");
+        }
         material.setDeleted(true);
-        materialRepository.save(material);
+        materialMapper.updateById(material);
     }
 
     @Override
     public Material getById(Long id) {
-        return materialRepository.findById(id)
-                .filter(m -> !m.getDeleted())
-                .orElseThrow(() -> new BusinessException("物资不存在"));
+        Material material = materialMapper.selectById(id);
+        if (material == null || material.getDeleted()) {
+            throw new BusinessException("物资不存在");
+        }
+        loadMaterialCategory(material);
+        return material;
+    }
+
+    private void loadMaterialCategory(Material material) {
+        if (material.getCategoryId() != null) {
+            MaterialCategory category = categoryMapper.selectById(material.getCategoryId());
+            material.setCategory(category);
+        }
     }
 
     @Override
     public Material getByCode(String code) {
-        return materialRepository.findByCode(code)
-                .filter(m -> !m.getDeleted())
-                .orElseThrow(() -> new BusinessException("物资不存在"));
+        Material material = materialMapper.findByCode(code);
+        if (material == null || material.getDeleted()) {
+            throw new BusinessException("物资不存在");
+        }
+        loadMaterialCategory(material);
+        return material;
     }
 
     @Override
     public Material getByBarcode(String barcode) {
-        return materialRepository.findByBarcode(barcode)
-                .filter(m -> !m.getDeleted())
-                .orElseThrow(() -> new BusinessException("物资不存在"));
+        Material material = materialMapper.findByBarcode(barcode);
+        if (material == null || material.getDeleted()) {
+            throw new BusinessException("物资不存在");
+        }
+        loadMaterialCategory(material);
+        return material;
     }
 
     @Override
     public List<Material> getAll() {
-        return materialRepository.findAllActive();
+        List<Material> materials = materialMapper.findAllActive();
+        for (Material material : materials) {
+            loadMaterialCategory(material);
+        }
+        return materials;
     }
 
     @Override
     public List<Material> getByCategoryId(Long categoryId) {
-        return materialRepository.findByCategoryId(categoryId);
+        List<Material> materials = materialMapper.findByCategoryId(categoryId);
+        for (Material material : materials) {
+            loadMaterialCategory(material);
+        }
+        return materials;
     }
 
     @Override
     public Page<Material> getPage(Long categoryId, Integer pageNum, Integer pageSize, String keyword) {
-        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-        Pageable pageable = PageRequest.of(pageNum - 1, pageSize, sort);
-        Specification<Material> spec = (root, query, cb) -> {
-            var predicates = cb.conjunction();
-            predicates = cb.and(predicates, cb.equal(root.get("deleted"), false));
-            if (categoryId != null) {
-                predicates = cb.and(predicates, cb.equal(root.get("category").get("id"), categoryId));
-            }
-            if (StringUtils.hasText(keyword)) {
-                var namePredicate = cb.like(root.get("name"), "%" + keyword + "%");
-                var codePredicate = cb.like(root.get("code"), "%" + keyword + "%");
-                predicates = cb.and(predicates, cb.or(namePredicate, codePredicate));
-            }
-            return predicates;
-        };
-        return materialRepository.findAll(spec, pageable);
+        Page<Material> page = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<Material> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Material::getDeleted, false);
+        if (categoryId != null) {
+            wrapper.eq(Material::getCategoryId, categoryId);
+        }
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> w.like(Material::getName, keyword).or().like(Material::getCode, keyword));
+        }
+        wrapper.orderByDesc(Material::getCreatedAt);
+        IPage<Material> materialPage = materialMapper.selectPage(page, wrapper);
+        for (Material material : materialPage.getRecords()) {
+            loadMaterialCategory(material);
+        }
+        return (Page<Material>) materialPage;
     }
 }

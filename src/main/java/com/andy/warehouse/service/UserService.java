@@ -4,7 +4,7 @@ import com.andy.warehouse.dto.*;
 import com.andy.warehouse.entity.Permission;
 import com.andy.warehouse.entity.Role;
 import com.andy.warehouse.entity.User;
-import org.springframework.data.domain.Page;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 import java.util.List;
 import java.util.Set;

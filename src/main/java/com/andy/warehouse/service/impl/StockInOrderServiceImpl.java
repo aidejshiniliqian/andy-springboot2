@@ -3,19 +3,20 @@ package com.andy.warehouse.service.impl;
 import com.andy.warehouse.common.BusinessException;
 import com.andy.warehouse.dto.StockInOrderCreateRequest;
 import com.andy.warehouse.dto.StockInOrderItemRequest;
-import com.andy.warehouse.entity.*;
-import com.andy.warehouse.repository.MaterialRepository;
-import com.andy.warehouse.repository.StockInOrderRepository;
-import com.andy.warehouse.repository.WarehouseRepository;
+import com.andy.warehouse.entity.Material;
+import com.andy.warehouse.entity.StockInOrder;
+import com.andy.warehouse.entity.StockInOrderItem;
+import com.andy.warehouse.entity.Warehouse;
+import com.andy.warehouse.mapper.MaterialMapper;
+import com.andy.warehouse.mapper.StockInOrderMapper;
+import com.andy.warehouse.mapper.WarehouseMapper;
 import com.andy.warehouse.security.SecurityUser;
 import com.andy.warehouse.service.StockInOrderService;
 import com.andy.warehouse.service.StockService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,31 +34,36 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class StockInOrderServiceImpl implements StockInOrderService {
 
-    private final StockInOrderRepository orderRepository;
-    private final WarehouseRepository warehouseRepository;
-    private final MaterialRepository materialRepository;
+    private final StockInOrderMapper orderMapper;
+    private final WarehouseMapper warehouseMapper;
+    private final MaterialMapper materialMapper;
     private final StockService stockService;
 
     @Override
     @Transactional
     public StockInOrder create(StockInOrderCreateRequest request) {
-        Warehouse warehouse = warehouseRepository.findById(request.getWarehouseId())
-                .orElseThrow(() -> new BusinessException("仓库不存在"));
+        Warehouse warehouse = warehouseMapper.selectById(request.getWarehouseId());
+        if (warehouse == null) {
+            throw new BusinessException("仓库不存在");
+        }
         StockInOrder order = new StockInOrder();
         order.setOrderNo(generateOrderNo("RK"));
         order.setOrderType(request.getOrderType());
-        order.setWarehouse(warehouse);
+        order.setWarehouseId(warehouse.getId());
         order.setSupplier(request.getSupplier());
         order.setOrderDate(request.getOrderDate() != null ? request.getOrderDate() : LocalDateTime.now());
         order.setStatus(0);
         order.setRemark(request.getRemark());
+        order.setItems(new ArrayList<>());
         BigDecimal totalAmount = BigDecimal.ZERO;
         for (StockInOrderItemRequest itemRequest : request.getItems()) {
-            Material material = materialRepository.findById(itemRequest.getMaterialId())
-                    .orElseThrow(() -> new BusinessException("物资不存在: " + itemRequest.getMaterialId()));
+            Material material = materialMapper.selectById(itemRequest.getMaterialId());
+            if (material == null) {
+                throw new BusinessException("物资不存在: " + itemRequest.getMaterialId());
+            }
             StockInOrderItem item = new StockInOrderItem();
-            item.setOrder(order);
-            item.setMaterial(material);
+            item.setOrderId(order.getId());
+            item.setMaterialId(material.getId());
             item.setQuantity(itemRequest.getQuantity());
             item.setUnitPrice(itemRequest.getUnitPrice() != null ? itemRequest.getUnitPrice() : material.getPrice());
             item.setTotalPrice(item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())));
@@ -72,7 +79,8 @@ public class StockInOrderServiceImpl implements StockInOrderService {
             order.setOperatorId(securityUser.getId());
             order.setOperatorName(securityUser.getUsername());
         }
-        return orderRepository.save(order);
+        orderMapper.insert(order);
+        return order;
     }
 
     private String generateOrderNo(String prefix) {
@@ -90,15 +98,15 @@ public class StockInOrderServiceImpl implements StockInOrderService {
         }
         for (StockInOrderItem item : order.getItems()) {
             stockService.addStock(
-                    order.getWarehouse().getId(),
-                    item.getMaterial().getId(),
+                    order.getWarehouseId(),
+                    item.getMaterialId(),
                     item.getQuantity(),
                     item.getBatchNo(),
                     item.getPosition()
             );
         }
         order.setStatus(1);
-        orderRepository.save(order);
+        orderMapper.updateById(order);
     }
 
     @Override
@@ -109,7 +117,7 @@ public class StockInOrderServiceImpl implements StockInOrderService {
             throw new BusinessException("只有待审核状态的订单才能驳回");
         }
         order.setStatus(2);
-        orderRepository.save(order);
+        orderMapper.updateById(order);
     }
 
     @Override
@@ -120,36 +128,59 @@ public class StockInOrderServiceImpl implements StockInOrderService {
             throw new BusinessException("已审核的订单不能删除");
         }
         order.setDeleted(true);
-        orderRepository.save(order);
+        orderMapper.updateById(order);
     }
 
     @Override
     public StockInOrder getById(Long id) {
-        return orderRepository.findById(id)
-                .filter(o -> !o.getDeleted())
-                .orElseThrow(() -> new BusinessException("入库单不存在"));
+        StockInOrder order = orderMapper.selectById(id);
+        if (order == null || order.getDeleted()) {
+            throw new BusinessException("入库单不存在");
+        }
+        loadOrderRelations(order);
+        return order;
+    }
+
+    private void loadOrderRelations(StockInOrder order) {
+        if (order.getWarehouseId() != null) {
+            Warehouse warehouse = warehouseMapper.selectById(order.getWarehouseId());
+            order.setWarehouse(warehouse);
+        }
+        List<StockInOrderItem> items = orderMapper.findItemsByOrderId(order.getId());
+        order.setItems(items != null ? items : new ArrayList<>());
+        for (StockInOrderItem item : order.getItems()) {
+            if (item.getMaterialId() != null) {
+                Material material = materialMapper.selectById(item.getMaterialId());
+                item.setMaterial(material);
+            }
+        }
     }
 
     @Override
     public List<StockInOrder> getByWarehouseId(Long warehouseId) {
-        return orderRepository.findByWarehouseId(warehouseId);
+        List<StockInOrder> orders = orderMapper.findByWarehouseId(warehouseId);
+        for (StockInOrder order : orders) {
+            loadOrderRelations(order);
+        }
+        return orders;
     }
 
     @Override
     public Page<StockInOrder> getPage(Long warehouseId, Integer pageNum, Integer pageSize, String keyword) {
-        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-        Pageable pageable = PageRequest.of(pageNum - 1, pageSize, sort);
-        Specification<StockInOrder> spec = (root, query, cb) -> {
-            var predicates = cb.conjunction();
-            predicates = cb.and(predicates, cb.equal(root.get("deleted"), false));
-            if (warehouseId != null) {
-                predicates = cb.and(predicates, cb.equal(root.get("warehouse").get("id"), warehouseId));
-            }
-            if (StringUtils.hasText(keyword)) {
-                predicates = cb.and(predicates, cb.like(root.get("orderNo"), "%" + keyword + "%"));
-            }
-            return predicates;
-        };
-        return orderRepository.findAll(spec, pageable);
+        Page<StockInOrder> page = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<StockInOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(StockInOrder::getDeleted, false);
+        if (warehouseId != null) {
+            wrapper.eq(StockInOrder::getWarehouseId, warehouseId);
+        }
+        if (StringUtils.hasText(keyword)) {
+            wrapper.like(StockInOrder::getOrderNo, keyword);
+        }
+        wrapper.orderByDesc(StockInOrder::getCreatedAt);
+        IPage<StockInOrder> orderPage = orderMapper.selectPage(page, wrapper);
+        for (StockInOrder order : orderPage.getRecords()) {
+            loadOrderRelations(order);
+        }
+        return (Page<StockInOrder>) orderPage;
     }
 }

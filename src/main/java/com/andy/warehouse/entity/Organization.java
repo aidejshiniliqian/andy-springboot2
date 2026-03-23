@@ -1,10 +1,12 @@
 package com.andy.warehouse.entity;
 
 import com.andy.warehouse.common.BaseEntity;
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 import java.util.ArrayList;
@@ -14,31 +16,21 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Entity
-@Table(name = "sys_organization")
+@EqualsAndHashCode(callSuper = true)
+@TableName("sys_organization")
 public class Organization extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(name = "name", nullable = false, length = 100)
     private String name;
 
-    @Column(name = "code", unique = true, length = 50)
     private String code;
 
-    @Column(name = "description", length = 500)
     private String description;
 
-    @Column(name = "status", nullable = false)
-    private Integer status = 1;
+    private Integer status;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parent_id")
-    private Organization parent;
+    private Long parentId;
 
-    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
+    @TableField(exist = false)
     @Builder.Default
     private List<Organization> children = new ArrayList<>();
 }

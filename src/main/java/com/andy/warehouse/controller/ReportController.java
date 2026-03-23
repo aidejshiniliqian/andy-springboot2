@@ -5,7 +5,6 @@ import com.andy.warehouse.common.Result;
 import com.andy.warehouse.dto.report.*;
 import com.andy.warehouse.service.ReportService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,7 +27,7 @@ public class ReportController {
             @RequestParam(defaultValue = "20") Integer pageSize) {
         
         PageResult<StockSummaryReport> result = reportService.getStockSummaryReport(
-                warehouseId, categoryId, keyword, PageRequest.of(pageNum - 1, pageSize));
+                warehouseId, categoryId, keyword, pageNum, pageSize);
         return Result.success(result);
     }
 
@@ -41,7 +40,7 @@ public class ReportController {
             @RequestParam(defaultValue = "20") Integer pageSize) {
         
         PageResult<StockInSummaryReport> result = reportService.getStockInSummaryReport(
-                warehouseId, startDate, endDate, PageRequest.of(pageNum - 1, pageSize));
+                warehouseId, startDate, endDate, pageNum, pageSize);
         return Result.success(result);
     }
 
@@ -54,7 +53,7 @@ public class ReportController {
             @RequestParam(defaultValue = "20") Integer pageSize) {
         
         PageResult<StockOutSummaryReport> result = reportService.getStockOutSummaryReport(
-                warehouseId, startDate, endDate, PageRequest.of(pageNum - 1, pageSize));
+                warehouseId, startDate, endDate, pageNum, pageSize);
         return Result.success(result);
     }
 
@@ -68,7 +67,7 @@ public class ReportController {
             @RequestParam(defaultValue = "20") Integer pageSize) {
         
         PageResult<StockTransactionDetail> result = reportService.getStockTransactionDetail(
-                warehouseId, materialId, startDate, endDate, PageRequest.of(pageNum - 1, pageSize));
+                warehouseId, materialId, startDate, endDate, pageNum, pageSize);
         return Result.success(result);
     }
 
@@ -80,7 +79,7 @@ public class ReportController {
             @RequestParam(defaultValue = "20") Integer pageSize) {
         
         PageResult<StockAgeAnalysis> result = reportService.getStockAgeAnalysis(
-                warehouseId, daysThreshold, PageRequest.of(pageNum - 1, pageSize));
+                warehouseId, daysThreshold, pageNum, pageSize);
         return Result.success(result);
     }
 
@@ -93,7 +92,7 @@ public class ReportController {
             @RequestParam(defaultValue = "20") Integer pageSize) {
         
         PageResult<PickingEfficiencyReport> result = reportService.getPickingEfficiencyReport(
-                warehouseId, startDate, endDate, PageRequest.of(pageNum - 1, pageSize));
+                warehouseId, startDate, endDate, pageNum, pageSize);
         return Result.success(result);
     }
 
@@ -106,7 +105,7 @@ public class ReportController {
             @RequestParam(defaultValue = "20") Integer pageSize) {
         
         PageResult<ShelvingEfficiencyReport> result = reportService.getShelvingEfficiencyReport(
-                warehouseId, startDate, endDate, PageRequest.of(pageNum - 1, pageSize));
+                warehouseId, startDate, endDate, pageNum, pageSize);
         return Result.success(result);
     }
 
@@ -117,7 +116,7 @@ public class ReportController {
             @RequestParam(defaultValue = "20") Integer pageSize) {
         
         PageResult<InventoryVarianceReport> result = reportService.getInventoryVarianceReport(
-                warehouseId, PageRequest.of(pageNum - 1, pageSize));
+                warehouseId, pageNum, pageSize);
         return Result.success(result);
     }
 

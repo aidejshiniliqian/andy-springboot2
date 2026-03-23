@@ -4,9 +4,8 @@ import com.andy.warehouse.common.BusinessException;
 import com.andy.warehouse.dto.DepartmentCreateRequest;
 import com.andy.warehouse.dto.DepartmentUpdateRequest;
 import com.andy.warehouse.entity.Department;
-import com.andy.warehouse.entity.Organization;
-import com.andy.warehouse.repository.DepartmentRepository;
-import com.andy.warehouse.repository.OrganizationRepository;
+import com.andy.warehouse.mapper.DepartmentMapper;
+import com.andy.warehouse.mapper.OrganizationMapper;
 import com.andy.warehouse.service.DepartmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -21,13 +20,13 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DepartmentServiceImpl implements DepartmentService {
 
-    private final DepartmentRepository departmentRepository;
-    private final OrganizationRepository organizationRepository;
+    private final DepartmentMapper departmentMapper;
+    private final OrganizationMapper organizationMapper;
 
     @Override
     @Transactional
     public Department create(DepartmentCreateRequest request) {
-        if (request.getCode() != null && departmentRepository.existsByCode(request.getCode())) {
+        if (request.getCode() != null && departmentMapper.existsByCode(request.getCode())) {
             throw new BusinessException("部门编码已存在");
         }
         Department dept = new Department();
@@ -35,26 +34,18 @@ public class DepartmentServiceImpl implements DepartmentService {
         dept.setCode(request.getCode());
         dept.setDescription(request.getDescription());
         dept.setStatus(request.getStatus());
-        if (request.getOrgId() != null) {
-            Organization org = organizationRepository.findById(request.getOrgId())
-                    .orElseThrow(() -> new BusinessException("组织机构不存在"));
-            dept.setOrganization(org);
-        }
-        if (request.getParentId() != null) {
-            Department parent = departmentRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new BusinessException("父级部门不存在"));
-            dept.setParent(parent);
-        }
-        return departmentRepository.save(dept);
+        dept.setOrgId(request.getOrgId());
+        dept.setParentId(request.getParentId());
+        departmentMapper.insert(dept);
+        return dept;
     }
 
     @Override
     @Transactional
     public Department update(DepartmentUpdateRequest request) {
-        Department dept = departmentRepository.findById(request.getId())
-                .orElseThrow(() -> new BusinessException("部门不存在"));
-        if (dept.getDeleted()) {
-            throw new BusinessException("部门已被删除");
+        Department dept = departmentMapper.selectById(request.getId());
+        if (dept == null || dept.getDeleted()) {
+            throw new BusinessException("部门不存在");
         }
         if (request.getName() != null) {
             dept.setName(request.getName());
@@ -69,51 +60,54 @@ public class DepartmentServiceImpl implements DepartmentService {
             if (request.getParentId().equals(dept.getId())) {
                 throw new BusinessException("不能将自己设置为父级");
             }
-            Department parent = departmentRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new BusinessException("父级部门不存在"));
-            dept.setParent(parent);
+            dept.setParentId(request.getParentId());
         }
-        return departmentRepository.save(dept);
+        departmentMapper.updateById(dept);
+        return dept;
     }
 
     @Override
     @Transactional
     public void delete(Long id) {
-        Department dept = departmentRepository.findById(id)
-                .orElseThrow(() -> new BusinessException("部门不存在"));
-        List<Department> children = departmentRepository.findByParentId(id);
+        Department dept = departmentMapper.selectById(id);
+        if (dept == null) {
+            throw new BusinessException("部门不存在");
+        }
+        List<Department> children = departmentMapper.findByParentId(id);
         if (!children.isEmpty()) {
             throw new BusinessException("存在子部门，无法删除");
         }
         dept.setDeleted(true);
-        departmentRepository.save(dept);
+        departmentMapper.updateById(dept);
     }
 
     @Override
     public Department getById(Long id) {
-        return departmentRepository.findById(id)
-                .filter(d -> !d.getDeleted())
-                .orElseThrow(() -> new BusinessException("部门不存在"));
+        Department dept = departmentMapper.selectById(id);
+        if (dept == null || dept.getDeleted()) {
+            throw new BusinessException("部门不存在");
+        }
+        return dept;
     }
 
     @Override
     public List<Department> getByOrgId(Long orgId) {
-        return departmentRepository.findByOrgId(orgId);
+        return departmentMapper.findByOrgId(orgId);
     }
 
     @Override
     public List<Department> getRootDepartments(Long orgId) {
-        return departmentRepository.findRootDepartments(orgId);
+        return departmentMapper.findRootDepartments(orgId);
     }
 
     @Override
     public List<Department> getChildren(Long parentId) {
-        return departmentRepository.findByParentId(parentId);
+        return departmentMapper.findByParentId(parentId);
     }
 
     @Override
     public List<Department> getTree(Long orgId) {
-        List<Department> all = departmentRepository.findByOrgId(orgId);
+        List<Department> all = departmentMapper.findByOrgId(orgId);
         Map<Long, Department> map = new HashMap<>();
         List<Department> roots = new ArrayList<>();
         for (Department dept : all) {
@@ -121,10 +115,10 @@ public class DepartmentServiceImpl implements DepartmentService {
             dept.setChildren(new ArrayList<>());
         }
         for (Department dept : all) {
-            if (dept.getParent() == null) {
+            if (dept.getParentId() == null) {
                 roots.add(dept);
             } else {
-                Department parent = map.get(dept.getParent().getId());
+                Department parent = map.get(dept.getParentId());
                 if (parent != null) {
                     parent.getChildren().add(dept);
                 }

@@ -6,11 +6,11 @@ import com.andy.warehouse.dto.MaterialCreateRequest;
 import com.andy.warehouse.dto.MaterialUpdateRequest;
 import com.andy.warehouse.entity.Material;
 import com.andy.warehouse.service.MaterialService;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -90,6 +90,6 @@ public class MaterialController {
             @RequestParam(defaultValue = "10") Integer pageSize,
             @RequestParam(required = false) String keyword) {
         Page<Material> page = materialService.getPage(categoryId, pageNum, pageSize, keyword);
-        return Result.success(PageResult.of(page.getContent(), page.getTotalElements(), pageNum, pageSize));
+        return Result.success(PageResult.of(page.getRecords(), page.getTotal(), pageNum, pageSize));
     }
 }

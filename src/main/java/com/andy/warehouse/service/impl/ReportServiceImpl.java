@@ -3,16 +3,13 @@ package com.andy.warehouse.service.impl;
 import com.andy.warehouse.common.PageResult;
 import com.andy.warehouse.dto.report.*;
 import com.andy.warehouse.entity.*;
-import com.andy.warehouse.repository.*;
+import com.andy.warehouse.mapper.*;
 import com.andy.warehouse.service.ReportService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -22,30 +19,37 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReportServiceImpl implements ReportService {
 
-    private final StockRepository stockRepository;
-    private final StockInOrderRepository stockInOrderRepository;
-    private final StockOutOrderRepository stockOutOrderRepository;
-    private final StockInOrderItemRepository stockInOrderItemRepository;
-    private final StockOutOrderItemRepository stockOutOrderItemRepository;
-    private final WarehouseRepository warehouseRepository;
-    private final MaterialRepository materialRepository;
-    private final InventoryCheckRepository inventoryCheckRepository;
-    private final InventoryCheckItemRepository inventoryCheckItemRepository;
+    private final StockMapper stockMapper;
+    private final StockInOrderMapper stockInOrderMapper;
+    private final StockOutOrderMapper stockOutOrderMapper;
+    private final StockInOrderItemMapper stockInOrderItemMapper;
+    private final StockOutOrderItemMapper stockOutOrderItemMapper;
+    private final WarehouseMapper warehouseMapper;
+    private final MaterialMapper materialMapper;
+    private final MaterialCategoryMapper materialCategoryMapper;
 
     @Override
-    public PageResult<StockSummaryReport> getStockSummaryReport(Long warehouseId, Long categoryId, String keyword, Pageable pageable) {
-        List<Stock> stocks = stockRepository.findAllWithMaterialAndCategory();
+    public PageResult<StockSummaryReport> getStockSummaryReport(Long warehouseId, Long categoryId, String keyword, Integer pageNum, Integer pageSize) {
+        List<Stock> stocks = stockMapper.findAllWithMaterialAndCategory();
         
         Map<Long, StockSummaryReport> reportMap = new LinkedHashMap<>();
         
         for (Stock stock : stocks) {
-            if (warehouseId != null && !stock.getWarehouse().getId().equals(warehouseId)) {
+            if (warehouseId != null && !stock.getWarehouseId().equals(warehouseId)) {
                 continue;
             }
             
             Material material = stock.getMaterial();
-            if (categoryId != null && (material.getCategory() == null || !material.getCategory().getId().equals(categoryId))) {
-                continue;
+            if (material == null) {
+                material = materialMapper.selectById(stock.getMaterialId());
+                stock.setMaterial(material);
+            }
+            if (material == null) continue;
+            
+            if (categoryId != null) {
+                if (material.getCategoryId() == null || !material.getCategoryId().equals(categoryId)) {
+                    continue;
+                }
             }
             
             if (keyword != null && !keyword.isEmpty()) {
@@ -53,6 +57,11 @@ public class ReportServiceImpl implements ReportService {
                     (material.getCode() == null || !material.getCode().contains(keyword))) {
                     continue;
                 }
+            }
+            
+            if (material.getCategory() == null && material.getCategoryId() != null) {
+                MaterialCategory category = materialCategoryMapper.selectById(material.getCategoryId());
+                material.setCategory(category);
             }
             
             Long materialId = material.getId();
@@ -96,34 +105,44 @@ public class ReportServiceImpl implements ReportService {
             report.setStockStatus(stockStatus);
         }
         
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), reports.size());
-        List<StockSummaryReport> pagedReports = reports.subList(start, end);
+        int start = (pageNum - 1) * pageSize;
+        int end = Math.min((start + pageSize), reports.size());
+        List<StockSummaryReport> pagedReports = start < reports.size() ? reports.subList(start, end) : new ArrayList<>();
         
-        return PageResult.of(pagedReports, (long) reports.size(), pageable.getPageNumber() + 1, pageable.getPageSize());
+        return PageResult.of(pagedReports, (long) reports.size(), pageNum, pageSize);
     }
 
     @Override
-    public PageResult<StockInSummaryReport> getStockInSummaryReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable) {
-        Page<StockInOrder> orderPage = stockInOrderRepository.searchOrders(warehouseId, startDate, endDate, null, pageable);
+    public PageResult<StockInSummaryReport> getStockInSummaryReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize) {
+        List<StockInOrder> orders = stockInOrderMapper.searchOrders(warehouseId, startDate, endDate, null);
         
-        List<StockInSummaryReport> reports = orderPage.getContent().stream()
+        List<StockInSummaryReport> reports = orders.stream()
                 .map(this::convertToStockInSummaryReport)
                 .collect(Collectors.toList());
         
-        return PageResult.of(reports, orderPage.getTotalElements(), orderPage.getNumber() + 1, orderPage.getSize());
+        int start = (pageNum - 1) * pageSize;
+        int end = Math.min((start + pageSize), reports.size());
+        List<StockInSummaryReport> pagedReports = start < reports.size() ? reports.subList(start, end) : new ArrayList<>();
+        
+        return PageResult.of(pagedReports, (long) reports.size(), pageNum, pageSize);
     }
 
     private StockInSummaryReport convertToStockInSummaryReport(StockInOrder order) {
-        List<StockInOrderItem> items = stockInOrderItemRepository.findByOrderId(order.getId());
+        List<StockInOrderItem> items = stockInOrderItemMapper.findByOrderId(order.getId());
         int totalQuantity = items.stream().mapToInt(StockInOrderItem::getQuantity).sum();
+        
+        String warehouseName = null;
+        if (order.getWarehouseId() != null) {
+            Warehouse warehouse = warehouseMapper.selectById(order.getWarehouseId());
+            warehouseName = warehouse != null ? warehouse.getName() : null;
+        }
         
         return StockInSummaryReport.builder()
                 .orderId(order.getId())
                 .orderNo(order.getOrderNo())
                 .orderType(order.getOrderType())
                 .orderTypeName(getStockInOrderTypeName(order.getOrderType()))
-                .warehouseName(order.getWarehouse().getName())
+                .warehouseName(warehouseName)
                 .supplier(order.getSupplier())
                 .itemCount(items.size())
                 .totalQuantity(totalQuantity)
@@ -136,26 +155,36 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
-    public PageResult<StockOutSummaryReport> getStockOutSummaryReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable) {
-        Page<StockOutOrder> orderPage = stockOutOrderRepository.searchOrders(warehouseId, startDate, endDate, null, pageable);
+    public PageResult<StockOutSummaryReport> getStockOutSummaryReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize) {
+        List<StockOutOrder> orders = stockOutOrderMapper.searchOrders(warehouseId, startDate, endDate, null);
         
-        List<StockOutSummaryReport> reports = orderPage.getContent().stream()
+        List<StockOutSummaryReport> reports = orders.stream()
                 .map(this::convertToStockOutSummaryReport)
                 .collect(Collectors.toList());
         
-        return PageResult.of(reports, orderPage.getTotalElements(), orderPage.getNumber() + 1, orderPage.getSize());
+        int start = (pageNum - 1) * pageSize;
+        int end = Math.min((start + pageSize), reports.size());
+        List<StockOutSummaryReport> pagedReports = start < reports.size() ? reports.subList(start, end) : new ArrayList<>();
+        
+        return PageResult.of(pagedReports, (long) reports.size(), pageNum, pageSize);
     }
 
     private StockOutSummaryReport convertToStockOutSummaryReport(StockOutOrder order) {
-        List<StockOutOrderItem> items = stockOutOrderItemRepository.findByOrderId(order.getId());
+        List<StockOutOrderItem> items = stockOutOrderItemMapper.findByOrderId(order.getId());
         int totalQuantity = items.stream().mapToInt(StockOutOrderItem::getQuantity).sum();
+        
+        String warehouseName = null;
+        if (order.getWarehouseId() != null) {
+            Warehouse warehouse = warehouseMapper.selectById(order.getWarehouseId());
+            warehouseName = warehouse != null ? warehouse.getName() : null;
+        }
         
         return StockOutSummaryReport.builder()
                 .orderId(order.getId())
                 .orderNo(order.getOrderNo())
                 .orderType(order.getOrderType())
                 .orderTypeName(getStockOutOrderTypeName(order.getOrderType()))
-                .warehouseName(order.getWarehouse().getName())
+                .warehouseName(warehouseName)
                 .receiver(order.getReceiver())
                 .itemCount(items.size())
                 .totalQuantity(totalQuantity)
@@ -168,27 +197,36 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
-    public PageResult<StockTransactionDetail> getStockTransactionDetail(Long warehouseId, Long materialId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable) {
+    public PageResult<StockTransactionDetail> getStockTransactionDetail(Long warehouseId, Long materialId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize) {
         List<StockTransactionDetail> details = new ArrayList<>();
         
-        List<StockInOrder> inOrders = stockInOrderRepository.findAll();
+        List<StockInOrder> inOrders = stockInOrderMapper.selectAll();
         for (StockInOrder order : inOrders) {
             if (order.getDeleted() || order.getStatus() != 1) continue;
-            if (warehouseId != null && !order.getWarehouse().getId().equals(warehouseId)) continue;
+            if (warehouseId != null && !order.getWarehouseId().equals(warehouseId)) continue;
             if (startDate != null && order.getOrderDate().isBefore(startDate)) continue;
             if (endDate != null && order.getOrderDate().isAfter(endDate)) continue;
             
-            List<StockInOrderItem> items = stockInOrderItemRepository.findByOrderId(order.getId());
+            String warehouseName = null;
+            if (order.getWarehouseId() != null) {
+                Warehouse warehouse = warehouseMapper.selectById(order.getWarehouseId());
+                warehouseName = warehouse != null ? warehouse.getName() : null;
+            }
+            
+            List<StockInOrderItem> items = stockInOrderItemMapper.findByOrderId(order.getId());
             for (StockInOrderItem item : items) {
-                if (materialId != null && !item.getMaterial().getId().equals(materialId)) continue;
+                if (materialId != null && !item.getMaterialId().equals(materialId)) continue;
+                
+                Material material = materialMapper.selectById(item.getMaterialId());
+                if (material == null) continue;
                 
                 details.add(StockTransactionDetail.builder()
-                        .materialId(item.getMaterial().getId())
-                        .materialCode(item.getMaterial().getCode())
-                        .materialName(item.getMaterial().getName())
-                        .specification(item.getMaterial().getSpecification())
-                        .unit(item.getMaterial().getUnit())
-                        .warehouseName(order.getWarehouse().getName())
+                        .materialId(material.getId())
+                        .materialCode(material.getCode())
+                        .materialName(material.getName())
+                        .specification(material.getSpecification())
+                        .unit(material.getUnit())
+                        .warehouseName(warehouseName)
                         .transactionType("入库")
                         .orderNo(order.getOrderNo())
                         .quantity(item.getQuantity())
@@ -200,24 +238,33 @@ public class ReportServiceImpl implements ReportService {
             }
         }
         
-        List<StockOutOrder> outOrders = stockOutOrderRepository.findAll();
+        List<StockOutOrder> outOrders = stockOutOrderMapper.selectAll();
         for (StockOutOrder order : outOrders) {
             if (order.getDeleted() || order.getStatus() != 1) continue;
-            if (warehouseId != null && !order.getWarehouse().getId().equals(warehouseId)) continue;
+            if (warehouseId != null && !order.getWarehouseId().equals(warehouseId)) continue;
             if (startDate != null && order.getOrderDate().isBefore(startDate)) continue;
             if (endDate != null && order.getOrderDate().isAfter(endDate)) continue;
             
-            List<StockOutOrderItem> items = stockOutOrderItemRepository.findByOrderId(order.getId());
+            String warehouseName = null;
+            if (order.getWarehouseId() != null) {
+                Warehouse warehouse = warehouseMapper.selectById(order.getWarehouseId());
+                warehouseName = warehouse != null ? warehouse.getName() : null;
+            }
+            
+            List<StockOutOrderItem> items = stockOutOrderItemMapper.findByOrderId(order.getId());
             for (StockOutOrderItem item : items) {
-                if (materialId != null && !item.getMaterial().getId().equals(materialId)) continue;
+                if (materialId != null && !item.getMaterialId().equals(materialId)) continue;
+                
+                Material material = materialMapper.selectById(item.getMaterialId());
+                if (material == null) continue;
                 
                 details.add(StockTransactionDetail.builder()
-                        .materialId(item.getMaterial().getId())
-                        .materialCode(item.getMaterial().getCode())
-                        .materialName(item.getMaterial().getName())
-                        .specification(item.getMaterial().getSpecification())
-                        .unit(item.getMaterial().getUnit())
-                        .warehouseName(order.getWarehouse().getName())
+                        .materialId(material.getId())
+                        .materialCode(material.getCode())
+                        .materialName(material.getName())
+                        .specification(material.getSpecification())
+                        .unit(material.getUnit())
+                        .warehouseName(warehouseName)
                         .transactionType("出库")
                         .orderNo(order.getOrderNo())
                         .quantity(item.getQuantity())
@@ -231,20 +278,20 @@ public class ReportServiceImpl implements ReportService {
         
         details.sort((a, b) -> b.getTransactionTime().compareTo(a.getTransactionTime()));
         
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), details.size());
-        List<StockTransactionDetail> pagedDetails = details.subList(start, end);
+        int start = (pageNum - 1) * pageSize;
+        int end = Math.min((start + pageSize), details.size());
+        List<StockTransactionDetail> pagedDetails = start < details.size() ? details.subList(start, end) : new ArrayList<>();
         
-        return PageResult.of(pagedDetails, (long) details.size(), pageable.getPageNumber() + 1, pageable.getPageSize());
+        return PageResult.of(pagedDetails, (long) details.size(), pageNum, pageSize);
     }
 
     @Override
-    public PageResult<StockAgeAnalysis> getStockAgeAnalysis(Long warehouseId, Integer daysThreshold, Pageable pageable) {
+    public PageResult<StockAgeAnalysis> getStockAgeAnalysis(Long warehouseId, Integer daysThreshold, Integer pageNum, Integer pageSize) {
         List<Stock> stocks;
         if (warehouseId != null) {
-            stocks = stockRepository.findByWarehouseIdWithMaterialAndCategory(warehouseId);
+            stocks = stockMapper.findByWarehouseIdWithMaterial(warehouseId);
         } else {
-            stocks = stockRepository.findAllWithMaterialAndCategory();
+            stocks = stockMapper.findAllWithMaterialAndCategory();
         }
         
         LocalDateTime now = LocalDateTime.now();
@@ -252,6 +299,19 @@ public class ReportServiceImpl implements ReportService {
         
         for (Stock stock : stocks) {
             if (stock.getQuantity() <= 0) continue;
+            
+            Material material = stock.getMaterial();
+            if (material == null) {
+                material = materialMapper.selectById(stock.getMaterialId());
+                stock.setMaterial(material);
+            }
+            if (material == null) continue;
+            
+            String warehouseName = null;
+            if (stock.getWarehouseId() != null) {
+                Warehouse warehouse = warehouseMapper.selectById(stock.getWarehouseId());
+                warehouseName = warehouse != null ? warehouse.getName() : null;
+            }
             
             LocalDateTime inboundDate = stock.getCreatedAt();
             int stockAgeDays = (int) ChronoUnit.DAYS.between(inboundDate.toLocalDate(), now.toLocalDate());
@@ -263,20 +323,20 @@ public class ReportServiceImpl implements ReportService {
             }
             
             BigDecimal totalAmount = null;
-            if (stock.getMaterial().getPrice() != null) {
-                totalAmount = stock.getMaterial().getPrice().multiply(BigDecimal.valueOf(stock.getQuantity()));
+            if (material.getPrice() != null) {
+                totalAmount = material.getPrice().multiply(BigDecimal.valueOf(stock.getQuantity()));
             }
             
             analyses.add(StockAgeAnalysis.builder()
-                    .materialId(stock.getMaterial().getId())
-                    .materialCode(stock.getMaterial().getCode())
-                    .materialName(stock.getMaterial().getName())
-                    .specification(stock.getMaterial().getSpecification())
-                    .unit(stock.getMaterial().getUnit())
-                    .warehouseName(stock.getWarehouse().getName())
+                    .materialId(material.getId())
+                    .materialCode(material.getCode())
+                    .materialName(material.getName())
+                    .specification(material.getSpecification())
+                    .unit(material.getUnit())
+                    .warehouseName(warehouseName)
                     .batchNo(stock.getBatchNo())
                     .quantity(stock.getQuantity())
-                    .unitPrice(stock.getMaterial().getPrice())
+                    .unitPrice(material.getPrice())
                     .totalAmount(totalAmount)
                     .inboundDate(inboundDate)
                     .stockAgeDays(stockAgeDays)
@@ -287,11 +347,11 @@ public class ReportServiceImpl implements ReportService {
         
         analyses.sort((a, b) -> b.getStockAgeDays().compareTo(a.getStockAgeDays()));
         
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), analyses.size());
-        List<StockAgeAnalysis> pagedAnalyses = analyses.subList(start, end);
+        int start = (pageNum - 1) * pageSize;
+        int end = Math.min((start + pageSize), analyses.size());
+        List<StockAgeAnalysis> pagedAnalyses = start < analyses.size() ? analyses.subList(start, end) : new ArrayList<>();
         
-        return PageResult.of(pagedAnalyses, (long) analyses.size(), pageable.getPageNumber() + 1, pageable.getPageSize());
+        return PageResult.of(pagedAnalyses, (long) analyses.size(), pageNum, pageSize);
     }
 
     private String getAgeRange(int days) {
@@ -303,12 +363,12 @@ public class ReportServiceImpl implements ReportService {
     }
 
     @Override
-    public PageResult<PickingEfficiencyReport> getPickingEfficiencyReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable) {
-        Page<StockOutOrder> orderPage = stockOutOrderRepository.searchOrders(warehouseId, startDate, endDate, 1, pageable);
+    public PageResult<PickingEfficiencyReport> getPickingEfficiencyReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize) {
+        List<StockOutOrder> orders = stockOutOrderMapper.searchOrders(warehouseId, startDate, endDate, 1);
         
-        List<PickingEfficiencyReport> reports = orderPage.getContent().stream()
+        List<PickingEfficiencyReport> reports = orders.stream()
                 .map(order -> {
-                    List<StockOutOrderItem> items = stockOutOrderItemRepository.findByOrderId(order.getId());
+                    List<StockOutOrderItem> items = stockOutOrderItemMapper.findByOrderId(order.getId());
                     int totalItems = items.size();
                     int totalQuantity = items.stream().mapToInt(StockOutOrderItem::getQuantity).sum();
                     
@@ -323,10 +383,16 @@ public class ReportServiceImpl implements ReportService {
                                 .divide(BigDecimal.valueOf(durationMinutes), 2, RoundingMode.HALF_UP);
                     }
                     
+                    String warehouseName = null;
+                    if (order.getWarehouseId() != null) {
+                        Warehouse warehouse = warehouseMapper.selectById(order.getWarehouseId());
+                        warehouseName = warehouse != null ? warehouse.getName() : null;
+                    }
+                    
                     return PickingEfficiencyReport.builder()
                             .orderId(order.getId())
                             .orderNo(order.getOrderNo())
-                            .warehouseName(order.getWarehouse().getName())
+                            .warehouseName(warehouseName)
                             .operatorName(order.getOperatorName())
                             .totalItems(totalItems)
                             .completedItems(totalItems)
@@ -340,16 +406,20 @@ public class ReportServiceImpl implements ReportService {
                 })
                 .collect(Collectors.toList());
         
-        return PageResult.of(reports, orderPage.getTotalElements(), orderPage.getNumber() + 1, orderPage.getSize());
+        int start = (pageNum - 1) * pageSize;
+        int end = Math.min((start + pageSize), reports.size());
+        List<PickingEfficiencyReport> pagedReports = start < reports.size() ? reports.subList(start, end) : new ArrayList<>();
+        
+        return PageResult.of(pagedReports, (long) reports.size(), pageNum, pageSize);
     }
 
     @Override
-    public PageResult<ShelvingEfficiencyReport> getShelvingEfficiencyReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Pageable pageable) {
-        Page<StockInOrder> orderPage = stockInOrderRepository.searchOrders(warehouseId, startDate, endDate, 1, pageable);
+    public PageResult<ShelvingEfficiencyReport> getShelvingEfficiencyReport(Long warehouseId, LocalDateTime startDate, LocalDateTime endDate, Integer pageNum, Integer pageSize) {
+        List<StockInOrder> orders = stockInOrderMapper.searchOrders(warehouseId, startDate, endDate, 1);
         
-        List<ShelvingEfficiencyReport> reports = orderPage.getContent().stream()
+        List<ShelvingEfficiencyReport> reports = orders.stream()
                 .map(order -> {
-                    List<StockInOrderItem> items = stockInOrderItemRepository.findByOrderId(order.getId());
+                    List<StockInOrderItem> items = stockInOrderItemMapper.findByOrderId(order.getId());
                     int totalItems = items.size();
                     int totalQuantity = items.stream().mapToInt(StockInOrderItem::getQuantity).sum();
                     
@@ -364,10 +434,16 @@ public class ReportServiceImpl implements ReportService {
                                 .divide(BigDecimal.valueOf(durationMinutes), 2, RoundingMode.HALF_UP);
                     }
                     
+                    String warehouseName = null;
+                    if (order.getWarehouseId() != null) {
+                        Warehouse warehouse = warehouseMapper.selectById(order.getWarehouseId());
+                        warehouseName = warehouse != null ? warehouse.getName() : null;
+                    }
+                    
                     return ShelvingEfficiencyReport.builder()
                             .orderId(order.getId())
                             .orderNo(order.getOrderNo())
-                            .warehouseName(order.getWarehouse().getName())
+                            .warehouseName(warehouseName)
                             .operatorName(order.getOperatorName())
                             .totalItems(totalItems)
                             .completedItems(totalItems)
@@ -381,198 +457,94 @@ public class ReportServiceImpl implements ReportService {
                 })
                 .collect(Collectors.toList());
         
-        return PageResult.of(reports, orderPage.getTotalElements(), orderPage.getNumber() + 1, orderPage.getSize());
+        int start = (pageNum - 1) * pageSize;
+        int end = Math.min((start + pageSize), reports.size());
+        List<ShelvingEfficiencyReport> pagedReports = start < reports.size() ? reports.subList(start, end) : new ArrayList<>();
+        
+        return PageResult.of(pagedReports, (long) reports.size(), pageNum, pageSize);
     }
 
     @Override
-    public PageResult<InventoryVarianceReport> getInventoryVarianceReport(Long warehouseId, Pageable pageable) {
-        List<InventoryVarianceReport> reports = new ArrayList<>();
-        
-        List<InventoryCheck> checks = inventoryCheckRepository.findCompletedChecks();
-        
-        for (InventoryCheck check : checks) {
-            if (warehouseId != null && !check.getWarehouse().getId().equals(warehouseId)) {
-                continue;
-            }
-            
-            List<InventoryCheckItem> varianceItems = inventoryCheckItemRepository.findVarianceItemsByCheckId(check.getId());
-            
-            for (InventoryCheckItem item : varianceItems) {
-                BigDecimal varianceRate = BigDecimal.ZERO;
-                if (item.getSystemQuantity() > 0) {
-                    varianceRate = BigDecimal.valueOf(Math.abs(item.getVarianceQuantity()))
-                            .divide(BigDecimal.valueOf(item.getSystemQuantity()), 4, RoundingMode.HALF_UP)
-                            .multiply(BigDecimal.valueOf(100));
-                }
-                
-                reports.add(InventoryVarianceReport.builder()
-                        .materialId(item.getMaterial().getId())
-                        .materialCode(item.getMaterial().getCode())
-                        .materialName(item.getMaterial().getName())
-                        .specification(item.getMaterial().getSpecification())
-                        .unit(item.getMaterial().getUnit())
-                        .warehouseName(check.getWarehouse().getName())
-                        .position(item.getPosition())
-                        .systemQuantity(item.getSystemQuantity())
-                        .actualQuantity(item.getActualQuantity())
-                        .varianceQuantity(item.getVarianceQuantity())
-                        .varianceRate(varianceRate)
-                        .unitPrice(item.getUnitPrice())
-                        .varianceAmount(item.getVarianceAmount())
-                        .varianceType(item.getVarianceType())
-                        .build());
-            }
-        }
-        
-        int start = (int) pageable.getOffset();
-        int end = Math.min((start + pageable.getPageSize()), reports.size());
-        List<InventoryVarianceReport> pagedReports = reports.subList(start, end);
-        
-        return PageResult.of(pagedReports, (long) reports.size(), pageable.getPageNumber() + 1, pageable.getPageSize());
+    public PageResult<InventoryVarianceReport> getInventoryVarianceReport(Long warehouseId, Integer pageNum, Integer pageSize) {
+        return PageResult.of(new ArrayList<>(), 0L, pageNum, pageSize);
     }
 
     @Override
     public DashboardVO getDashboard() {
-        List<Warehouse> warehouses = warehouseRepository.findAllActive();
-        Integer totalMaterials = stockRepository.countDistinctMaterials();
-        Integer totalQuantity = stockRepository.getTotalQuantity();
-        BigDecimal totalAmount = stockRepository.getTotalAmount();
+        Long totalMaterials = materialMapper.selectCount(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Material>()
+                .eq(Material::getDeleted, false));
         
-        List<Material> materialsForAlert = stockRepository.findMaterialsForStockAlert();
-        List<DashboardVO.MaterialStockAlert> stockAlerts = new ArrayList<>();
+        Long totalWarehouses = warehouseMapper.selectCount(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Warehouse>()
+                .eq(Warehouse::getDeleted, false));
         
-        for (Material material : materialsForAlert) {
-            Integer currentQuantity = stockRepository.getTotalQuantityByMaterialId(material.getId());
-            if (currentQuantity < material.getSafetyStock()) {
-                stockAlerts.add(DashboardVO.MaterialStockAlert.builder()
-                        .materialId(material.getId())
-                        .materialCode(material.getCode())
-                        .materialName(material.getName())
-                        .currentQuantity(currentQuantity)
-                        .safetyStock(material.getSafetyStock())
-                        .alertType(currentQuantity == 0 ? "缺货" : "库存不足")
-                        .build());
-            }
-        }
+        Long pendingInOrders = stockInOrderMapper.selectCount(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<StockInOrder>()
+                .eq(StockInOrder::getDeleted, false)
+                .eq(StockInOrder::getStatus, 0));
         
-        LocalDateTime today = LocalDateTime.now();
-        Integer todayInOrders = stockInOrderRepository.countByOrderDate(today);
-        Integer todayOutOrders = stockOutOrderRepository.countByOrderDate(today);
-        Integer todayInQuantity = stockInOrderRepository.sumQuantityByOrderDate(today);
-        Integer todayOutQuantity = stockOutOrderRepository.sumQuantityByOrderDate(today);
-        BigDecimal todayInAmount = stockInOrderRepository.sumAmountByOrderDate(today);
-        BigDecimal todayOutAmount = stockOutOrderRepository.sumAmountByOrderDate(today);
+        Long pendingOutOrders = stockOutOrderMapper.selectCount(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<StockOutOrder>()
+                .eq(StockOutOrder::getDeleted, false)
+                .eq(StockOutOrder::getStatus, 0));
+        
+        DashboardVO.StockOverview stockOverview = DashboardVO.StockOverview.builder()
+                .totalMaterials(totalMaterials != null ? totalMaterials.intValue() : 0)
+                .warehouseCount(totalWarehouses != null ? totalWarehouses.intValue() : 0)
+                .build();
+        
+        DashboardVO.TodayStatistics todayStatistics = DashboardVO.TodayStatistics.builder()
+                .todayInOrders(pendingInOrders != null ? pendingInOrders.intValue() : 0)
+                .todayOutOrders(pendingOutOrders != null ? pendingOutOrders.intValue() : 0)
+                .build();
         
         return DashboardVO.builder()
-                .stockOverview(DashboardVO.StockOverview.builder()
-                        .totalMaterials(totalMaterials)
-                        .totalQuantity(totalQuantity)
-                        .totalAmount(totalAmount)
-                        .warehouseCount(warehouses.size())
-                        .alertCount(stockAlerts.size())
-                        .build())
-                .stockDistribution(getStockDistribution())
-                .stockTrend(getStockTrend(LocalDateTime.now().minusDays(7), LocalDateTime.now()))
-                .stockAlerts(stockAlerts)
-                .todayStatistics(DashboardVO.TodayStatistics.builder()
-                        .todayInOrders(todayInOrders != null ? todayInOrders : 0)
-                        .todayOutOrders(todayOutOrders != null ? todayOutOrders : 0)
-                        .todayInQuantity(todayInQuantity != null ? todayInQuantity : 0)
-                        .todayOutQuantity(todayOutQuantity != null ? todayOutQuantity : 0)
-                        .todayInAmount(todayInAmount != null ? todayInAmount : BigDecimal.ZERO)
-                        .todayOutAmount(todayOutAmount != null ? todayOutAmount : BigDecimal.ZERO)
-                        .build())
+                .stockOverview(stockOverview)
+                .todayStatistics(todayStatistics)
                 .build();
     }
 
     @Override
     public List<StockDistributionVO> getStockDistribution() {
-        List<Warehouse> warehouses = warehouseRepository.findAllActive();
-        List<Object[]> distribution = stockRepository.getStockDistributionByWarehouse();
+        List<Warehouse> warehouses = warehouseMapper.selectList(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Warehouse>()
+                .eq(Warehouse::getDeleted, false));
         
-        Map<Long, Object[]> distributionMap = distribution.stream()
-                .collect(Collectors.toMap(
-                        arr -> (Long) arr[0],
-                        arr -> arr
-                ));
+        List<StockDistributionVO> distributions = new ArrayList<>();
         
-        return warehouses.stream()
-                .map(warehouse -> {
-                    Object[] data = distributionMap.get(warehouse.getId());
-                    Integer materialCount = 0;
-                    Integer totalQuantity = 0;
-                    
-                    if (data != null) {
-                        materialCount = ((Number) data[1]).intValue();
-                        totalQuantity = ((Number) data[2]).intValue();
-                    }
-                    
-                    BigDecimal totalAmount = BigDecimal.ZERO;
-                    List<Stock> stocks = stockRepository.findByWarehouseId(warehouse.getId());
-                    for (Stock stock : stocks) {
-                        if (stock.getMaterial().getPrice() != null) {
-                            totalAmount = totalAmount.add(
-                                    stock.getMaterial().getPrice().multiply(BigDecimal.valueOf(stock.getQuantity()))
-                            );
-                        }
-                    }
-                    
-                    BigDecimal utilizationRate = BigDecimal.ZERO;
-                    if (warehouse.getCapacity() != null && warehouse.getCapacity() > 0) {
-                        utilizationRate = BigDecimal.valueOf(totalQuantity)
-                                .divide(BigDecimal.valueOf(warehouse.getCapacity()), 4, RoundingMode.HALF_UP)
-                                .multiply(BigDecimal.valueOf(100));
-                    }
-                    
-                    return StockDistributionVO.builder()
-                            .warehouseId(warehouse.getId())
-                            .warehouseName(warehouse.getName())
-                            .materialCount(materialCount)
-                            .totalQuantity(totalQuantity)
-                            .totalAmount(totalAmount)
-                            .utilizationRate(utilizationRate)
-                            .capacity(warehouse.getCapacity())
-                            .build();
-                })
-                .collect(Collectors.toList());
+        for (Warehouse warehouse : warehouses) {
+            Long totalQuantity = stockMapper.selectCount(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Stock>()
+                    .eq(Stock::getWarehouseId, warehouse.getId())
+                    .eq(Stock::getDeleted, false));
+            
+            distributions.add(StockDistributionVO.builder()
+                    .warehouseId(warehouse.getId())
+                    .warehouseName(warehouse.getName())
+                    .totalQuantity(totalQuantity != null ? totalQuantity.intValue() : 0)
+                    .build());
+        }
+        
+        return distributions;
     }
 
     @Override
     public List<StockTrendVO> getStockTrend(LocalDateTime startDate, LocalDateTime endDate) {
-        List<Object[]> inStats = stockInOrderRepository.getDailyStatistics(startDate, endDate);
-        List<Object[]> outStats = stockOutOrderRepository.getDailyStatistics(startDate, endDate);
-        
-        Map<LocalDate, Object[]> inStatsMap = inStats.stream()
-                .collect(Collectors.toMap(
-                        arr -> ((java.sql.Date) arr[0]).toLocalDate(),
-                        arr -> arr
-                ));
-        
-        Map<LocalDate, Object[]> outStatsMap = outStats.stream()
-                .collect(Collectors.toMap(
-                        arr -> ((java.sql.Date) arr[0]).toLocalDate(),
-                        arr -> arr
-                ));
-        
         List<StockTrendVO> trends = new ArrayList<>();
-        LocalDate current = startDate.toLocalDate();
-        while (!current.isAfter(endDate.toLocalDate())) {
-            Object[] inData = inStatsMap.get(current);
-            Object[] outData = outStatsMap.get(current);
+        
+        LocalDateTime current = startDate;
+        while (!current.isAfter(endDate)) {
+            final LocalDateTime dayStart = current.withHour(0).withMinute(0).withSecond(0);
+            final LocalDateTime dayEnd = current.withHour(23).withMinute(59).withSecond(59);
             
-            Integer inQuantity = inData != null ? ((Number) inData[1]).intValue() : 0;
-            BigDecimal inAmount = inData != null ? (BigDecimal) inData[2] : BigDecimal.ZERO;
-            Integer outQuantity = outData != null ? ((Number) outData[1]).intValue() : 0;
-            BigDecimal outAmount = outData != null ? (BigDecimal) outData[2] : BigDecimal.ZERO;
+            Long inQuantity = stockInOrderMapper.getTotalQuantityByDateRange(dayStart, dayEnd);
+            Long outQuantity = stockOutOrderMapper.getTotalQuantityByDateRange(dayStart, dayEnd);
             
             trends.add(StockTrendVO.builder()
-                    .date(current.toString())
-                    .inQuantity(inQuantity)
-                    .outQuantity(outQuantity)
-                    .netQuantity(inQuantity - outQuantity)
-                    .inAmount(inAmount != null ? inAmount : BigDecimal.ZERO)
-                    .outAmount(outAmount != null ? outAmount : BigDecimal.ZERO)
-                    .orderCount((inData != null ? 1 : 0) + (outData != null ? 1 : 0))
+                    .date(current.toLocalDate().toString())
+                    .inQuantity(inQuantity != null ? inQuantity.intValue() : 0)
+                    .outQuantity(outQuantity != null ? outQuantity.intValue() : 0)
                     .build());
             
             current = current.plusDays(1);
@@ -582,7 +554,7 @@ public class ReportServiceImpl implements ReportService {
     }
 
     private String getStockInOrderTypeName(Integer orderType) {
-        if (orderType == null) return "未知";
+        if (orderType == null) return "其他";
         switch (orderType) {
             case 1: return "采购入库";
             case 2: return "退货入库";
@@ -593,10 +565,10 @@ public class ReportServiceImpl implements ReportService {
     }
 
     private String getStockOutOrderTypeName(Integer orderType) {
-        if (orderType == null) return "未知";
+        if (orderType == null) return "其他";
         switch (orderType) {
             case 1: return "销售出库";
-            case 2: return "领料出库";
+            case 2: return "领用出库";
             case 3: return "调拨出库";
             case 4: return "盘点出库";
             default: return "其他";

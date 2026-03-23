@@ -3,7 +3,7 @@ package com.andy.warehouse.service;
 import com.andy.warehouse.dto.MaterialCreateRequest;
 import com.andy.warehouse.dto.MaterialUpdateRequest;
 import com.andy.warehouse.entity.Material;
-import org.springframework.data.domain.Page;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 import java.util.List;
 

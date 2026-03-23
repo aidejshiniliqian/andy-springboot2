@@ -4,7 +4,7 @@ import com.andy.warehouse.common.BusinessException;
 import com.andy.warehouse.dto.MaterialCategoryCreateRequest;
 import com.andy.warehouse.dto.MaterialCategoryUpdateRequest;
 import com.andy.warehouse.entity.MaterialCategory;
-import com.andy.warehouse.repository.MaterialCategoryRepository;
+import com.andy.warehouse.mapper.MaterialCategoryMapper;
 import com.andy.warehouse.service.MaterialCategoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,12 +19,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class MaterialCategoryServiceImpl implements MaterialCategoryService {
 
-    private final MaterialCategoryRepository categoryRepository;
+    private final MaterialCategoryMapper categoryMapper;
 
     @Override
     @Transactional
     public MaterialCategory create(MaterialCategoryCreateRequest request) {
-        if (request.getCode() != null && categoryRepository.existsByCode(request.getCode())) {
+        if (request.getCode() != null && categoryMapper.existsByCode(request.getCode())) {
             throw new BusinessException("分类编码已存在");
         }
         MaterialCategory category = new MaterialCategory();
@@ -32,21 +32,17 @@ public class MaterialCategoryServiceImpl implements MaterialCategoryService {
         category.setCode(request.getCode());
         category.setDescription(request.getDescription());
         category.setStatus(request.getStatus());
-        if (request.getParentId() != null) {
-            MaterialCategory parent = categoryRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new BusinessException("父级分类不存在"));
-            category.setParent(parent);
-        }
-        return categoryRepository.save(category);
+        category.setParentId(request.getParentId());
+        categoryMapper.insert(category);
+        return category;
     }
 
     @Override
     @Transactional
     public MaterialCategory update(MaterialCategoryUpdateRequest request) {
-        MaterialCategory category = categoryRepository.findById(request.getId())
-                .orElseThrow(() -> new BusinessException("分类不存在"));
-        if (category.getDeleted()) {
-            throw new BusinessException("分类已被删除");
+        MaterialCategory category = categoryMapper.selectById(request.getId());
+        if (category == null || category.getDeleted()) {
+            throw new BusinessException("分类不存在");
         }
         if (request.getName() != null) {
             category.setName(request.getName());
@@ -58,64 +54,65 @@ public class MaterialCategoryServiceImpl implements MaterialCategoryService {
             if (request.getParentId().equals(category.getId())) {
                 throw new BusinessException("不能将自己设置为父级");
             }
-            MaterialCategory parent = categoryRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new BusinessException("父级分类不存在"));
-            category.setParent(parent);
+            category.setParentId(request.getParentId());
         }
         if (request.getStatus() != null) {
             category.setStatus(request.getStatus());
         }
-        return categoryRepository.save(category);
+        categoryMapper.updateById(category);
+        return category;
     }
 
     @Override
     @Transactional
     public void delete(Long id) {
-        MaterialCategory category = categoryRepository.findById(id)
-                .orElseThrow(() -> new BusinessException("分类不存在"));
-        List<MaterialCategory> children = categoryRepository.findByParentId(id);
+        MaterialCategory category = categoryMapper.selectById(id);
+        if (category == null) {
+            throw new BusinessException("分类不存在");
+        }
+        List<MaterialCategory> children = categoryMapper.findByParentId(id);
         if (!children.isEmpty()) {
             throw new BusinessException("存在子分类，无法删除");
         }
         category.setDeleted(true);
-        categoryRepository.save(category);
+        categoryMapper.updateById(category);
     }
 
     @Override
     public MaterialCategory getById(Long id) {
-        return categoryRepository.findById(id)
-                .filter(c -> !c.getDeleted())
-                .orElseThrow(() -> new BusinessException("分类不存在"));
+        MaterialCategory category = categoryMapper.selectById(id);
+        if (category == null || category.getDeleted()) {
+            throw new BusinessException("分类不存在");
+        }
+        return category;
     }
 
     @Override
     public List<MaterialCategory> getAll() {
-        return categoryRepository.findAllActive();
+        return categoryMapper.findAllActive();
     }
 
     @Override
     public List<MaterialCategory> getRootCategories() {
-        return categoryRepository.findRootCategories();
+        return categoryMapper.findRootCategories();
     }
 
     @Override
     public List<MaterialCategory> getChildren(Long parentId) {
-        return categoryRepository.findByParentId(parentId);
+        return categoryMapper.findByParentId(parentId);
     }
 
     @Override
     public List<MaterialCategory> getTree() {
-        List<MaterialCategory> all = categoryRepository.findAllActive();
+        List<MaterialCategory> all = categoryMapper.findAllActive();
         Map<Long, MaterialCategory> map = new HashMap<>();
         List<MaterialCategory> roots = new ArrayList<>();
         for (MaterialCategory cat : all) {
             map.put(cat.getId(), cat);
         }
         for (MaterialCategory cat : all) {
-            if (cat.getParent() == null) {
+            if (cat.getParentId() == null) {
                 roots.add(cat);
-            } else {
-                MaterialCategory parent = map.get(cat.getParent().getId());
             }
         }
         return roots;

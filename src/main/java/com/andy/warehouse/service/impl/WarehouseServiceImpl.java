@@ -3,17 +3,14 @@ package com.andy.warehouse.service.impl;
 import com.andy.warehouse.common.BusinessException;
 import com.andy.warehouse.dto.WarehouseCreateRequest;
 import com.andy.warehouse.dto.WarehouseUpdateRequest;
-import com.andy.warehouse.entity.Organization;
 import com.andy.warehouse.entity.Warehouse;
-import com.andy.warehouse.repository.OrganizationRepository;
-import com.andy.warehouse.repository.WarehouseRepository;
+import com.andy.warehouse.mapper.OrganizationMapper;
+import com.andy.warehouse.mapper.WarehouseMapper;
 import com.andy.warehouse.service.WarehouseService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -24,13 +21,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class WarehouseServiceImpl implements WarehouseService {
 
-    private final WarehouseRepository warehouseRepository;
-    private final OrganizationRepository organizationRepository;
+    private final WarehouseMapper warehouseMapper;
+    private final OrganizationMapper organizationMapper;
 
     @Override
     @Transactional
     public Warehouse create(WarehouseCreateRequest request) {
-        if (request.getCode() != null && warehouseRepository.existsByCode(request.getCode())) {
+        if (request.getCode() != null && warehouseMapper.existsByCode(request.getCode())) {
             throw new BusinessException("仓库编码已存在");
         }
         Warehouse warehouse = new Warehouse();
@@ -44,21 +41,17 @@ public class WarehouseServiceImpl implements WarehouseService {
         warehouse.setPhone(request.getPhone());
         warehouse.setDescription(request.getDescription());
         warehouse.setStatus(request.getStatus());
-        if (request.getOrgId() != null) {
-            Organization org = organizationRepository.findById(request.getOrgId())
-                    .orElseThrow(() -> new BusinessException("组织机构不存在"));
-            warehouse.setOrganization(org);
-        }
-        return warehouseRepository.save(warehouse);
+        warehouse.setOrgId(request.getOrgId());
+        warehouseMapper.insert(warehouse);
+        return warehouse;
     }
 
     @Override
     @Transactional
     public Warehouse update(WarehouseUpdateRequest request) {
-        Warehouse warehouse = warehouseRepository.findById(request.getId())
-                .orElseThrow(() -> new BusinessException("仓库不存在"));
-        if (warehouse.getDeleted()) {
-            throw new BusinessException("仓库已被删除");
+        Warehouse warehouse = warehouseMapper.selectById(request.getId());
+        if (warehouse == null || warehouse.getDeleted()) {
+            throw new BusinessException("仓库不存在");
         }
         if (request.getName() != null) {
             warehouse.setName(request.getName());
@@ -87,47 +80,48 @@ public class WarehouseServiceImpl implements WarehouseService {
         if (request.getStatus() != null) {
             warehouse.setStatus(request.getStatus());
         }
-        return warehouseRepository.save(warehouse);
+        warehouseMapper.updateById(warehouse);
+        return warehouse;
     }
 
     @Override
     @Transactional
     public void delete(Long id) {
-        Warehouse warehouse = warehouseRepository.findById(id)
-                .orElseThrow(() -> new BusinessException("仓库不存在"));
+        Warehouse warehouse = warehouseMapper.selectById(id);
+        if (warehouse == null) {
+            throw new BusinessException("仓库不存在");
+        }
         warehouse.setDeleted(true);
-        warehouseRepository.save(warehouse);
+        warehouseMapper.updateById(warehouse);
     }
 
     @Override
     public Warehouse getById(Long id) {
-        return warehouseRepository.findById(id)
-                .filter(w -> !w.getDeleted())
-                .orElseThrow(() -> new BusinessException("仓库不存在"));
+        Warehouse warehouse = warehouseMapper.selectById(id);
+        if (warehouse == null || warehouse.getDeleted()) {
+            throw new BusinessException("仓库不存在");
+        }
+        return warehouse;
     }
 
     @Override
     public List<Warehouse> getAll() {
-        return warehouseRepository.findAllActive();
+        return warehouseMapper.findAllActive();
     }
 
     @Override
     public Page<Warehouse> getPage(Long orgId, Integer pageNum, Integer pageSize, String keyword) {
-        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
-        Pageable pageable = PageRequest.of(pageNum - 1, pageSize, sort);
-        Specification<Warehouse> spec = (root, query, cb) -> {
-            var predicates = cb.conjunction();
-            predicates = cb.and(predicates, cb.equal(root.get("deleted"), false));
-            if (orgId != null) {
-                predicates = cb.and(predicates, cb.equal(root.get("organization").get("id"), orgId));
-            }
-            if (StringUtils.hasText(keyword)) {
-                var namePredicate = cb.like(root.get("name"), "%" + keyword + "%");
-                var codePredicate = cb.like(root.get("code"), "%" + keyword + "%");
-                predicates = cb.and(predicates, cb.or(namePredicate, codePredicate));
-            }
-            return predicates;
-        };
-        return warehouseRepository.findAll(spec, pageable);
+        Page<Warehouse> page = new Page<>(pageNum, pageSize);
+        LambdaQueryWrapper<Warehouse> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Warehouse::getDeleted, false);
+        if (orgId != null) {
+            wrapper.eq(Warehouse::getOrgId, orgId);
+        }
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> w.like(Warehouse::getName, keyword).or().like(Warehouse::getCode, keyword));
+        }
+        wrapper.orderByDesc(Warehouse::getCreatedAt);
+        IPage<Warehouse> warehousePage = warehouseMapper.selectPage(page, wrapper);
+        return (Page<Warehouse>) warehousePage;
     }
 }
