@@ -6,15 +6,14 @@ import com.andy.warehouse.entity.Permission;
 import com.andy.warehouse.entity.Role;
 import com.andy.warehouse.exception.BusinessException;
 import com.andy.warehouse.exception.ResourceNotFoundException;
-import com.andy.warehouse.repository.PermissionRepository;
-import com.andy.warehouse.repository.RoleRepository;
+import com.andy.warehouse.mapper.PermissionMapper;
+import com.andy.warehouse.mapper.RoleMapper;
 import com.andy.warehouse.service.RoleService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -27,13 +26,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RoleServiceImpl implements RoleService {
 
-    private final RoleRepository roleRepository;
-    private final PermissionRepository permissionRepository;
+    private final RoleMapper roleMapper;
+    private final PermissionMapper permissionMapper;
 
     @Override
     @Transactional
     public RoleDTO createRole(RoleCreateRequest request) {
-        if (roleRepository.existsByRoleCode(request.getRoleCode())) {
+        if (roleMapper.existsByRoleCode(request.getRoleCode())) {
             throw new BusinessException("角色编码已存在");
         }
 
@@ -42,20 +41,25 @@ public class RoleServiceImpl implements RoleService {
         role.setRoleName(request.getRoleName());
         role.setDescription(request.getDescription());
 
+        roleMapper.insert(role);
+
+        // 保存角色权限关联
         if (!CollectionUtils.isEmpty(request.getPermissionIds())) {
-            List<Permission> permissions = permissionRepository.findAllById(request.getPermissionIds());
-            role.setPermissions(permissions);
+            for (Long permissionId : request.getPermissionIds()) {
+                roleMapper.insertRolePermission(role.getId(), permissionId);
+            }
         }
 
-        Role savedRole = roleRepository.save(role);
-        return convertToDTO(savedRole);
+        return convertToDTO(role);
     }
 
     @Override
     @Transactional
     public RoleDTO updateRole(Long id, RoleUpdateRequest request) {
-        Role role = roleRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("角色不存在"));
+        Role role = roleMapper.selectById(id);
+        if (role == null) {
+            throw new ResourceNotFoundException("角色不存在");
+        }
 
         if (StringUtils.hasText(request.getRoleName())) {
             role.setRoleName(request.getRoleName());
@@ -67,47 +71,58 @@ public class RoleServiceImpl implements RoleService {
             role.setStatus(request.getStatus());
         }
 
+        roleMapper.updateById(role);
+
+        // 更新角色权限关联
         if (request.getPermissionIds() != null) {
-            List<Permission> permissions = permissionRepository.findAllById(request.getPermissionIds());
-            role.setPermissions(permissions);
+            roleMapper.deleteRolePermissionsByRoleId(id);
+            for (Long permissionId : request.getPermissionIds()) {
+                roleMapper.insertRolePermission(id, permissionId);
+            }
         }
 
-        Role updatedRole = roleRepository.save(role);
-        return convertToDTO(updatedRole);
+        return convertToDTO(role);
     }
 
     @Override
     @Transactional
     public void deleteRole(Long id) {
-        Role role = roleRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("角色不存在"));
-        role.setIsDeleted(true);
-        roleRepository.save(role);
+        Role role = roleMapper.selectById(id);
+        if (role == null) {
+            throw new ResourceNotFoundException("角色不存在");
+        }
+        roleMapper.deleteById(id);
     }
 
     @Override
     public RoleDTO getRoleById(Long id) {
-        Role role = roleRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("角色不存在"));
+        Role role = roleMapper.selectById(id);
+        if (role == null) {
+            throw new ResourceNotFoundException("角色不存在");
+        }
         return convertToDTO(role);
     }
 
     @Override
     public PageResult<RoleDTO> getRoleList(RoleQueryRequest request) {
-        Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), Sort.by("createdAt").descending());
-        Page<Role> rolePage = roleRepository.findByConditions(
+        Page<Role> page = new Page<>(request.getPage(), request.getSize());
+        IPage<Role> rolePage = roleMapper.findByConditions(
+                page,
                 request.getRoleCode(),
                 request.getRoleName(),
-                request.getStatus(),
-                pageable
+                request.getStatus()
         );
-        return PageResult.of(rolePage.map(this::convertToDTO));
+        List<RoleDTO> dtoList = rolePage.getRecords().stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+        return PageResult.of(dtoList, rolePage.getTotal(), rolePage.getCurrent(), rolePage.getSize());
     }
 
     @Override
     public List<RoleDTO> getAllRoles() {
-        return roleRepository.findAll().stream()
-                .filter(role -> !Boolean.TRUE.equals(role.getIsDeleted()))
+        LambdaQueryWrapper<Role> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Role::getIsDeleted, false);
+        return roleMapper.selectList(wrapper).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -115,30 +130,37 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public void updateRoleStatus(Long id, Integer status) {
-        Role role = roleRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("角色不存在"));
+        Role role = roleMapper.selectById(id);
+        if (role == null) {
+            throw new ResourceNotFoundException("角色不存在");
+        }
         role.setStatus(status);
-        roleRepository.save(role);
+        roleMapper.updateById(role);
     }
 
     @Override
     @Transactional
     public void assignPermissions(Long roleId, List<Long> permissionIds) {
-        Role role = roleRepository.findById(roleId)
-                .orElseThrow(() -> new ResourceNotFoundException("角色不存在"));
+        Role role = roleMapper.selectById(roleId);
+        if (role == null) {
+            throw new ResourceNotFoundException("角色不存在");
+        }
         
-        List<Permission> permissions = permissionRepository.findAllById(permissionIds);
-        role.setPermissions(permissions);
-        roleRepository.save(role);
+        roleMapper.deleteRolePermissionsByRoleId(roleId);
+        for (Long permissionId : permissionIds) {
+            roleMapper.insertRolePermission(roleId, permissionId);
+        }
     }
 
     private RoleDTO convertToDTO(Role role) {
         RoleDTO dto = new RoleDTO();
         BeanUtils.copyProperties(role, dto);
         
-        if (!CollectionUtils.isEmpty(role.getPermissions())) {
-            dto.setPermissionIds(role.getPermissions().stream().map(Permission::getId).collect(Collectors.toList()));
-            dto.setPermissionNames(role.getPermissions().stream().map(Permission::getPermissionName).collect(Collectors.toList()));
+        List<Long> permissionIds = roleMapper.findPermissionIdsByRoleId(role.getId());
+        if (!CollectionUtils.isEmpty(permissionIds)) {
+            dto.setPermissionIds(permissionIds);
+            List<Permission> permissions = permissionMapper.selectBatchIds(permissionIds);
+            dto.setPermissionNames(permissions.stream().map(Permission::getPermissionName).collect(Collectors.toList()));
         }
         
         return dto;

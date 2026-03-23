@@ -5,21 +5,19 @@ import com.andy.warehouse.dto.user.*;
 import com.andy.warehouse.entity.*;
 import com.andy.warehouse.exception.BusinessException;
 import com.andy.warehouse.exception.ResourceNotFoundException;
-import com.andy.warehouse.repository.*;
+import com.andy.warehouse.mapper.*;
 import com.andy.warehouse.service.UserService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -27,16 +25,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
-    private final UserRepository userRepository;
-    private final RoleRepository roleRepository;
-    private final OrganizationRepository organizationRepository;
-    private final DepartmentRepository departmentRepository;
+    private final UserMapper userMapper;
+    private final RoleMapper roleMapper;
+    private final OrganizationMapper organizationMapper;
+    private final DepartmentMapper departmentMapper;
     private final PasswordEncoder passwordEncoder;
 
     @Override
     @Transactional
     public UserDTO createUser(UserCreateRequest request) {
-        if (userRepository.existsByUsername(request.getUsername())) {
+        if (userMapper.existsByUsername(request.getUsername())) {
             throw new BusinessException("用户名已存在");
         }
 
@@ -47,33 +45,28 @@ public class UserServiceImpl implements UserService {
         user.setEmail(request.getEmail());
         user.setPhone(request.getPhone());
         user.setGender(request.getGender());
+        user.setOrgId(request.getOrgId());
+        user.setDeptId(request.getDeptId());
 
-        if (request.getOrgId() != null) {
-            Organization org = organizationRepository.findById(request.getOrgId())
-                    .orElseThrow(() -> new ResourceNotFoundException("组织机构不存在"));
-            user.setOrganization(org);
-        }
+        userMapper.insert(user);
 
-        if (request.getDeptId() != null) {
-            Department dept = departmentRepository.findById(request.getDeptId())
-                    .orElseThrow(() -> new ResourceNotFoundException("部门不存在"));
-            user.setDepartment(dept);
-        }
-
+        // 保存用户角色关联
         if (!CollectionUtils.isEmpty(request.getRoleIds())) {
-            List<Role> roles = roleRepository.findAllById(request.getRoleIds());
-            user.setRoles(roles);
+            for (Long roleId : request.getRoleIds()) {
+                userMapper.getBaseMapper().insertUserRole(user.getId(), roleId);
+            }
         }
 
-        User savedUser = userRepository.save(user);
-        return convertToDTO(savedUser);
+        return convertToDTO(user);
     }
 
     @Override
     @Transactional
     public UserDTO updateUser(Long id, UserUpdateRequest request) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("用户不存在"));
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
 
         if (StringUtils.hasText(request.getRealName())) {
             user.setRealName(request.getRealName());
@@ -90,69 +83,76 @@ public class UserServiceImpl implements UserService {
         if (request.getStatus() != null) {
             user.setStatus(request.getStatus());
         }
-
         if (request.getOrgId() != null) {
-            Organization org = organizationRepository.findById(request.getOrgId())
-                    .orElseThrow(() -> new ResourceNotFoundException("组织机构不存在"));
-            user.setOrganization(org);
+            user.setOrgId(request.getOrgId());
         }
-
         if (request.getDeptId() != null) {
-            Department dept = departmentRepository.findById(request.getDeptId())
-                    .orElseThrow(() -> new ResourceNotFoundException("部门不存在"));
-            user.setDepartment(dept);
+            user.setDeptId(request.getDeptId());
         }
 
+        userMapper.updateById(user);
+
+        // 更新用户角色关联
         if (request.getRoleIds() != null) {
-            List<Role> roles = roleRepository.findAllById(request.getRoleIds());
-            user.setRoles(roles);
+            // 删除旧的角色关联
+            userMapper.getBaseMapper().deleteUserRolesByUserId(id);
+            // 添加新的角色关联
+            for (Long roleId : request.getRoleIds()) {
+                userMapper.getBaseMapper().insertUserRole(id, roleId);
+            }
         }
 
-        User updatedUser = userRepository.save(user);
-        return convertToDTO(updatedUser);
+        return convertToDTO(user);
     }
 
     @Override
     @Transactional
     public void deleteUser(Long id) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("用户不存在"));
-        user.setIsDeleted(true);
-        userRepository.save(user);
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
+        userMapper.deleteById(id);
     }
 
     @Override
     public UserDTO getUserById(Long id) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("用户不存在"));
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
         return convertToDTO(user);
     }
 
     @Override
     public UserDTO getUserByUsername(String username) {
-        User user = userRepository.findByUsername(username)
+        User user = userMapper.findByUsername(username)
                 .orElseThrow(() -> new ResourceNotFoundException("用户不存在"));
         return convertToDTO(user);
     }
 
     @Override
     public PageResult<UserDTO> getUserList(UserQueryRequest request) {
-        Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), Sort.by("createdAt").descending());
-        Page<User> userPage = userRepository.findByConditions(
+        Page<User> page = new Page<>(request.getPage(), request.getSize());
+        IPage<User> userPage = userMapper.findByConditions(
+                page,
                 request.getUsername(),
                 request.getRealName(),
                 request.getOrgId(),
                 request.getDeptId(),
-                request.getStatus(),
-                pageable
+                request.getStatus()
         );
-        return PageResult.of(userPage.map(this::convertToDTO));
+        List<UserDTO> dtoList = userPage.getRecords().stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+        return PageResult.of(dtoList, userPage.getTotal(), userPage.getCurrent(), userPage.getSize());
     }
 
     @Override
     public List<UserDTO> getAllUsers() {
-        return userRepository.findAll().stream()
-                .filter(user -> !Boolean.TRUE.equals(user.getIsDeleted()))
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(User::getIsDeleted, false);
+        return userMapper.selectList(wrapper).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -160,52 +160,69 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void changePassword(Long userId, PasswordChangeRequest request) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("用户不存在"));
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
 
         if (!passwordEncoder.matches(request.getOldPassword(), user.getPassword())) {
             throw new BusinessException("原密码不正确");
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        userRepository.save(user);
+        userMapper.updateById(user);
     }
 
     @Override
     @Transactional
     public void resetPassword(Long userId, String newPassword) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("用户不存在"));
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
         user.setPassword(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
+        userMapper.updateById(user);
     }
 
     @Override
     @Transactional
     public void updateUserStatus(Long id, Integer status) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("用户不存在"));
+        User user = userMapper.selectById(id);
+        if (user == null) {
+            throw new ResourceNotFoundException("用户不存在");
+        }
         user.setStatus(status);
-        userRepository.save(user);
+        userMapper.updateById(user);
     }
 
     private UserDTO convertToDTO(User user) {
         UserDTO dto = new UserDTO();
         BeanUtils.copyProperties(user, dto);
         
-        if (user.getOrganization() != null) {
-            dto.setOrgId(user.getOrganization().getId());
-            dto.setOrgName(user.getOrganization().getOrgName());
+        // 查询组织机构
+        if (user.getOrgId() != null) {
+            Organization org = organizationMapper.selectById(user.getOrgId());
+            if (org != null) {
+                dto.setOrgId(org.getId());
+                dto.setOrgName(org.getOrgName());
+            }
         }
         
-        if (user.getDepartment() != null) {
-            dto.setDeptId(user.getDepartment().getId());
-            dto.setDeptName(user.getDepartment().getDeptName());
+        // 查询部门
+        if (user.getDeptId() != null) {
+            Department dept = departmentMapper.selectById(user.getDeptId());
+            if (dept != null) {
+                dto.setDeptId(dept.getId());
+                dto.setDeptName(dept.getDeptName());
+            }
         }
         
-        if (!CollectionUtils.isEmpty(user.getRoles())) {
-            dto.setRoleIds(user.getRoles().stream().map(Role::getId).collect(Collectors.toList()));
-            dto.setRoleNames(user.getRoles().stream().map(Role::getRoleName).collect(Collectors.toList()));
+        // 查询角色
+        List<Long> roleIds = userMapper.findRoleIdsByUserId(user.getId());
+        if (!CollectionUtils.isEmpty(roleIds)) {
+            dto.setRoleIds(roleIds);
+            List<Role> roles = roleMapper.selectBatchIds(roleIds);
+            dto.setRoleNames(roles.stream().map(Role::getRoleName).collect(Collectors.toList()));
         }
         
         return dto;

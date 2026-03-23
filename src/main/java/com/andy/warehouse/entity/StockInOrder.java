@@ -1,6 +1,7 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -10,56 +11,59 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "wms_stock_in_order")
+@TableName("wms_stock_in_order")
 @Getter
 @Setter
 public class StockInOrder extends BaseEntity {
 
-    @Column(name = "order_no", unique = true, nullable = false, length = 50)
+    @TableField("order_no")
     private String orderNo;
 
-    @Column(name = "order_type", length = 20)
+    @TableField("order_type")
     private String orderType;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id", nullable = false)
-    private Warehouse warehouse;
+    @TableField("warehouse_id")
+    private Long warehouseId;
 
-    @Column(name = "supplier_name", length = 100)
+    @TableField("supplier_name")
     private String supplierName;
 
-    @Column(name = "supplier_contact", length = 50)
+    @TableField("supplier_contact")
     private String supplierContact;
 
-    @Column(name = "supplier_phone", length = 20)
+    @TableField("supplier_phone")
     private String supplierPhone;
 
-    @Column(name = "total_amount", precision = 15, scale = 2)
+    @TableField("total_amount")
     private BigDecimal totalAmount;
 
-    @Column(name = "total_quantity", precision = 15, scale = 2)
+    @TableField("total_quantity")
     private BigDecimal totalQuantity;
 
-    @Column(name = "order_date")
+    @TableField("order_date")
     private LocalDate orderDate;
 
-    @Column(name = "expected_date")
+    @TableField("expected_date")
     private LocalDate expectedDate;
 
-    @Column(name = "actual_date")
+    @TableField("actual_date")
     private LocalDateTime actualDate;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "operator_id")
-    private User operator;
+    @TableField("operator_id")
+    private Long operatorId;
 
-    @Column(name = "remark", length = 500)
+    @TableField("remark")
     private String remark;
 
-    @Column(name = "status", length = 20)
+    @TableField("status")
     private String status;
 
-    @OneToMany(mappedBy = "stockInOrder", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @TableField(exist = false)
+    private Warehouse warehouse;
+
+    @TableField(exist = false)
+    private User operator;
+
+    @TableField(exist = false)
     private List<StockInItem> items = new ArrayList<>();
 }

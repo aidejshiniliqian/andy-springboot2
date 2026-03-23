@@ -5,15 +5,13 @@ import com.andy.warehouse.dto.stock.*;
 import com.andy.warehouse.entity.*;
 import com.andy.warehouse.exception.BusinessException;
 import com.andy.warehouse.exception.ResourceNotFoundException;
-import com.andy.warehouse.repository.*;
+import com.andy.warehouse.mapper.*;
 import com.andy.warehouse.service.StockOutService;
 import com.andy.warehouse.util.SnowflakeIdGenerator;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,25 +25,28 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class StockOutServiceImpl implements StockOutService {
 
-    private final StockOutOrderRepository stockOutOrderRepository;
-    private final StockOutItemRepository stockOutItemRepository;
-    private final WarehouseRepository warehouseRepository;
-    private final MaterialRepository materialRepository;
-    private final WarehouseLocationRepository locationRepository;
-    private final InventoryRepository inventoryRepository;
-    private final InventoryRecordRepository inventoryRecordRepository;
+    private final StockOutOrderMapper stockOutOrderMapper;
+    private final StockOutItemMapper stockOutItemMapper;
+    private final WarehouseMapper warehouseMapper;
+    private final MaterialMapper materialMapper;
+    private final WarehouseLocationMapper locationMapper;
+    private final InventoryMapper inventoryMapper;
+    private final InventoryRecordMapper inventoryRecordMapper;
+    private final UserMapper userMapper;
     private final SnowflakeIdGenerator idGenerator;
 
     @Override
     @Transactional
     public StockOutOrderDTO createStockOut(StockOutCreateRequest request) {
-        Warehouse warehouse = warehouseRepository.findById(request.getWarehouseId())
-                .orElseThrow(() -> new ResourceNotFoundException("仓库不存在"));
+        Warehouse warehouse = warehouseMapper.selectById(request.getWarehouseId());
+        if (warehouse == null) {
+            throw new ResourceNotFoundException("仓库不存在");
+        }
 
         StockOutOrder order = new StockOutOrder();
         order.setOrderNo(generateOrderNo());
         order.setOrderType(request.getOrderType());
-        order.setWarehouse(warehouse);
+        order.setWarehouseId(request.getWarehouseId());
         order.setRecipientName(request.getRecipientName());
         order.setRecipientDept(request.getRecipientDept());
         order.setRecipientContact(request.getRecipientContact());
@@ -59,13 +60,15 @@ public class StockOutServiceImpl implements StockOutService {
         List<StockOutItem> items = new ArrayList<>();
 
         for (StockOutCreateRequest.StockOutItemRequest itemRequest : request.getItems()) {
-            Material material = materialRepository.findById(itemRequest.getMaterialId())
-                    .orElseThrow(() -> new ResourceNotFoundException("物资不存在"));
+            Material material = materialMapper.selectById(itemRequest.getMaterialId());
+            if (material == null) {
+                throw new ResourceNotFoundException("物资不存在");
+            }
 
-            checkStock(warehouse.getId(), material.getId(), itemRequest.getQuantity());
+            checkStock(request.getWarehouseId(), itemRequest.getMaterialId(), itemRequest.getQuantity());
 
             StockOutItem item = new StockOutItem();
-            item.setMaterial(material);
+            item.setMaterialId(itemRequest.getMaterialId());
             item.setQuantity(itemRequest.getQuantity());
             item.setUnit(itemRequest.getUnit() != null ? itemRequest.getUnit() : material.getUnit());
             item.setUnitPrice(itemRequest.getUnitPrice());
@@ -74,9 +77,11 @@ public class StockOutServiceImpl implements StockOutService {
             item.setStatus("PENDING");
 
             if (itemRequest.getLocationId() != null) {
-                WarehouseLocation location = locationRepository.findById(itemRequest.getLocationId())
-                        .orElseThrow(() -> new ResourceNotFoundException("库位不存在"));
-                item.setLocation(location);
+                WarehouseLocation location = locationMapper.selectById(itemRequest.getLocationId());
+                if (location == null) {
+                    throw new ResourceNotFoundException("库位不存在");
+                }
+                item.setLocationId(itemRequest.getLocationId());
             }
 
             if (itemRequest.getUnitPrice() != null) {
@@ -91,19 +96,18 @@ public class StockOutServiceImpl implements StockOutService {
         order.setTotalAmount(totalAmount);
         order.setTotalQuantity(totalQuantity);
 
-        StockOutOrder savedOrder = stockOutOrderRepository.save(order);
+        stockOutOrderMapper.insert(order);
 
         for (StockOutItem item : items) {
-            item.setStockOutOrder(savedOrder);
+            item.setStockOutOrderId(order.getId());
+            stockOutItemMapper.insert(item);
         }
-        stockOutItemRepository.saveAll(items);
 
-        savedOrder.setItems(items);
-        return convertToDTO(savedOrder);
+        return convertToDTO(order, items);
     }
 
     private void checkStock(Long warehouseId, Long materialId, BigDecimal quantity) {
-        BigDecimal totalStock = inventoryRepository.getTotalQuantityByMaterialId(materialId);
+        BigDecimal totalStock = inventoryMapper.getTotalQuantityByMaterialId(materialId);
         if (totalStock == null || totalStock.compareTo(quantity) < 0) {
             throw new BusinessException("库存不足");
         }
@@ -112,8 +116,10 @@ public class StockOutServiceImpl implements StockOutService {
     @Override
     @Transactional
     public StockOutOrderDTO confirmStockOut(Long id) {
-        StockOutOrder order = stockOutOrderRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("出库单不存在"));
+        StockOutOrder order = stockOutOrderMapper.selectById(id);
+        if (order == null) {
+            throw new ResourceNotFoundException("出库单不存在");
+        }
 
         if (!"APPROVED".equals(order.getStatus())) {
             throw new BusinessException("只有已审批的出库单才能确认出库");
@@ -121,25 +127,28 @@ public class StockOutServiceImpl implements StockOutService {
 
         order.setStatus("COMPLETED");
         order.setActualDate(LocalDateTime.now());
+        stockOutOrderMapper.updateById(order);
 
-        for (StockOutItem item : order.getItems()) {
+        List<StockOutItem> items = stockOutItemMapper.findByStockOutOrderId(id);
+        for (StockOutItem item : items) {
             item.setStatus("COMPLETED");
             item.setActualQuantity(item.getQuantity());
-            stockOutItemRepository.save(item);
+            stockOutItemMapper.updateById(item);
 
-            deductInventory(order.getWarehouse(), item);
+            deductInventory(order.getWarehouseId(), item);
             createInventoryRecord(order, item, "OUT");
         }
 
-        StockOutOrder updatedOrder = stockOutOrderRepository.save(order);
-        return convertToDTO(updatedOrder);
+        return convertToDTO(order, items);
     }
 
     @Override
     @Transactional
     public StockOutOrderDTO approveStockOut(Long id) {
-        StockOutOrder order = stockOutOrderRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("出库单不存在"));
+        StockOutOrder order = stockOutOrderMapper.selectById(id);
+        if (order == null) {
+            throw new ResourceNotFoundException("出库单不存在");
+        }
 
         if (!"PENDING".equals(order.getStatus())) {
             throw new BusinessException("只有待审批的出库单才能审批");
@@ -147,64 +156,75 @@ public class StockOutServiceImpl implements StockOutService {
 
         order.setStatus("APPROVED");
         order.setApproveTime(LocalDateTime.now());
+        stockOutOrderMapper.updateById(order);
 
-        StockOutOrder updatedOrder = stockOutOrderRepository.save(order);
-        return convertToDTO(updatedOrder);
+        List<StockOutItem> items = stockOutItemMapper.findByStockOutOrderId(id);
+        return convertToDTO(order, items);
     }
 
     @Override
     @Transactional
     public StockOutOrderDTO cancelStockOut(Long id) {
-        StockOutOrder order = stockOutOrderRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("出库单不存在"));
+        StockOutOrder order = stockOutOrderMapper.selectById(id);
+        if (order == null) {
+            throw new ResourceNotFoundException("出库单不存在");
+        }
 
         if ("COMPLETED".equals(order.getStatus())) {
             throw new BusinessException("已完成的出库单不能取消");
         }
 
         order.setStatus("CANCELLED");
+        stockOutOrderMapper.updateById(order);
 
-        for (StockOutItem item : order.getItems()) {
+        List<StockOutItem> items = stockOutItemMapper.findByStockOutOrderId(id);
+        for (StockOutItem item : items) {
             item.setStatus("CANCELLED");
-            stockOutItemRepository.save(item);
+            stockOutItemMapper.updateById(item);
         }
 
-        StockOutOrder updatedOrder = stockOutOrderRepository.save(order);
-        return convertToDTO(updatedOrder);
+        return convertToDTO(order, items);
     }
 
     @Override
     public StockOutOrderDTO getStockOutById(Long id) {
-        StockOutOrder order = stockOutOrderRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("出库单不存在"));
-        return convertToDTO(order);
+        StockOutOrder order = stockOutOrderMapper.selectById(id);
+        if (order == null) {
+            throw new ResourceNotFoundException("出库单不存在");
+        }
+        List<StockOutItem> items = stockOutItemMapper.findByStockOutOrderId(id);
+        return convertToDTO(order, items);
     }
 
     @Override
     public StockOutOrderDTO getStockOutByOrderNo(String orderNo) {
-        StockOutOrder order = stockOutOrderRepository.findByOrderNo(orderNo)
+        StockOutOrder order = stockOutOrderMapper.findByOrderNo(orderNo)
                 .orElseThrow(() -> new ResourceNotFoundException("出库单不存在"));
-        return convertToDTO(order);
+        List<StockOutItem> items = stockOutItemMapper.findByStockOutOrderId(order.getId());
+        return convertToDTO(order, items);
     }
 
     @Override
     public PageResult<StockOutOrderDTO> getStockOutList(StockQueryRequest request) {
-        Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), Sort.by("createdAt").descending());
-        Page<StockOutOrder> orderPage = stockOutOrderRepository.findByConditions(
+        Page<StockOutOrder> page = new Page<>(request.getPage(), request.getSize());
+        IPage<StockOutOrder> orderPage = stockOutOrderMapper.findByConditions(
+                page,
                 request.getOrderNo(),
                 request.getOrderType(),
                 request.getWarehouseId(),
                 request.getStatus(),
                 request.getStartDate(),
-                request.getEndDate(),
-                pageable
+                request.getEndDate()
         );
-        return PageResult.of(orderPage.map(this::convertToDTO));
+        List<StockOutOrderDTO> dtoList = orderPage.getRecords().stream()
+                .map(order -> convertToDTO(order, stockOutItemMapper.findByStockOutOrderId(order.getId())))
+                .collect(Collectors.toList());
+        return PageResult.of(dtoList, orderPage.getTotal(), orderPage.getCurrent(), orderPage.getSize());
     }
 
-    private void deductInventory(Warehouse warehouse, StockOutItem item) {
-        List<Inventory> inventories = inventoryRepository.findByMaterialIdAndWarehouseId(
-                item.getMaterial().getId(), warehouse.getId());
+    private void deductInventory(Long warehouseId, StockOutItem item) {
+        List<Inventory> inventories = inventoryMapper.findByMaterialIdAndWarehouseId(
+                item.getMaterialId(), warehouseId);
 
         BigDecimal remainingQty = item.getQuantity();
 
@@ -221,7 +241,7 @@ public class StockOutServiceImpl implements StockOutService {
                 inventory.setAvailableQuantity(BigDecimal.ZERO);
             }
 
-            inventoryRepository.save(inventory);
+            inventoryMapper.updateById(inventory);
         }
     }
 
@@ -231,14 +251,14 @@ public class StockOutServiceImpl implements StockOutService {
         record.setRecordType(recordType);
         record.setBizType(order.getOrderType());
         record.setBizNo(order.getOrderNo());
-        record.setMaterial(item.getMaterial());
-        record.setWarehouse(order.getWarehouse());
-        record.setLocation(item.getLocation());
+        record.setMaterialId(item.getMaterialId());
+        record.setWarehouseId(order.getWarehouseId());
+        record.setLocationId(item.getLocationId());
         record.setQuantity(item.getQuantity().negate());
         record.setUnit(item.getUnit());
         record.setBatchNo(item.getBatchNo());
         record.setRemark(item.getRemark());
-        inventoryRecordRepository.save(record);
+        inventoryRecordMapper.insert(record);
     }
 
     private String generateOrderNo() {
@@ -249,17 +269,23 @@ public class StockOutServiceImpl implements StockOutService {
         return "REC" + idGenerator.nextId();
     }
 
-    private StockOutOrderDTO convertToDTO(StockOutOrder order) {
+    private StockOutOrderDTO convertToDTO(StockOutOrder order, List<StockOutItem> items) {
         StockOutOrderDTO dto = new StockOutOrderDTO();
         BeanUtils.copyProperties(order, dto);
-        dto.setWarehouseId(order.getWarehouse().getId());
-        dto.setWarehouseName(order.getWarehouse().getWarehouseName());
-        if (order.getOperator() != null) {
-            dto.setOperatorId(order.getOperator().getId());
-            dto.setOperatorName(order.getOperator().getRealName());
+        dto.setWarehouseId(order.getWarehouseId());
+        Warehouse warehouse = warehouseMapper.selectById(order.getWarehouseId());
+        if (warehouse != null) {
+            dto.setWarehouseName(warehouse.getWarehouseName());
         }
-        if (order.getItems() != null) {
-            dto.setItems(order.getItems().stream().map(this::convertItemToDTO).collect(Collectors.toList()));
+        if (order.getOperatorId() != null) {
+            dto.setOperatorId(order.getOperatorId());
+            User operator = userMapper.selectById(order.getOperatorId());
+            if (operator != null) {
+                dto.setOperatorName(operator.getRealName());
+            }
+        }
+        if (items != null) {
+            dto.setItems(items.stream().map(this::convertItemToDTO).collect(Collectors.toList()));
         }
         return dto;
     }
@@ -267,15 +293,21 @@ public class StockOutServiceImpl implements StockOutService {
     private StockOutItemDTO convertItemToDTO(StockOutItem item) {
         StockOutItemDTO dto = new StockOutItemDTO();
         BeanUtils.copyProperties(item, dto);
-        dto.setMaterialId(item.getMaterial().getId());
-        dto.setMaterialCode(item.getMaterial().getMaterialCode());
-        dto.setMaterialName(item.getMaterial().getMaterialName());
-        dto.setSpecification(item.getMaterial().getSpecification());
+        dto.setMaterialId(item.getMaterialId());
+        Material material = materialMapper.selectById(item.getMaterialId());
+        if (material != null) {
+            dto.setMaterialCode(material.getMaterialCode());
+            dto.setMaterialName(material.getMaterialName());
+            dto.setSpecification(material.getSpecification());
+        }
         dto.setUnit(item.getUnit());
-        if (item.getLocation() != null) {
-            dto.setLocationId(item.getLocation().getId());
-            dto.setLocationCode(item.getLocation().getLocationCode());
-            dto.setLocationName(item.getLocation().getLocationName());
+        if (item.getLocationId() != null) {
+            dto.setLocationId(item.getLocationId());
+            WarehouseLocation location = locationMapper.selectById(item.getLocationId());
+            if (location != null) {
+                dto.setLocationCode(location.getLocationCode());
+                dto.setLocationName(location.getLocationName());
+            }
         }
         return dto;
     }

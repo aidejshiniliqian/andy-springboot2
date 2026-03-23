@@ -1,44 +1,48 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "sys_department")
+@TableName("sys_department")
 @Getter
 @Setter
 public class Department extends BaseEntity {
 
-    @Column(name = "dept_code", nullable = false, length = 50)
+    @TableField("dept_code")
     private String deptCode;
 
-    @Column(name = "dept_name", nullable = false, length = 100)
+    @TableField("dept_name")
     private String deptName;
 
-    @Column(name = "description", length = 500)
+    @TableField("description")
     private String description;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parent_id")
-    private Department parent;
+    @TableField("parent_id")
+    private Long parentId;
 
-    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Department> children = new ArrayList<>();
+    @TableField("org_id")
+    private Long orgId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "org_id", nullable = false)
-    private Organization organization;
-
-    @Column(name = "sort_order")
+    @TableField("sort_order")
     private Integer sortOrder = 0;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
 
-    @OneToMany(mappedBy = "department", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @TableField(exist = false)
+    private Department parent;
+
+    @TableField(exist = false)
+    private List<Department> children = new ArrayList<>();
+
+    @TableField(exist = false)
+    private Organization organization;
+
+    @TableField(exist = false)
     private List<User> users = new ArrayList<>();
 }

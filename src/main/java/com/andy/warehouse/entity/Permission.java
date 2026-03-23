@@ -1,52 +1,54 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "sys_permission")
+@TableName("sys_permission")
 @Getter
 @Setter
 public class Permission extends BaseEntity {
 
-    @Column(name = "permission_code", unique = true, nullable = false, length = 50)
+    @TableField("permission_code")
     private String permissionCode;
 
-    @Column(name = "permission_name", nullable = false, length = 100)
+    @TableField("permission_name")
     private String permissionName;
 
-    @Column(name = "description", length = 500)
+    @TableField("description")
     private String description;
 
-    @Column(name = "type", length = 20)
+    @TableField("type")
     private String type;
 
-    @Column(name = "resource_url", length = 200)
+    @TableField("resource_url")
     private String resourceUrl;
 
-    @Column(name = "http_method", length = 10)
+    @TableField("http_method")
     private String httpMethod;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parent_id")
-    private Permission parent;
+    @TableField("parent_id")
+    private Long parentId;
 
-    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<Permission> children = new ArrayList<>();
-
-    @Column(name = "sort_order")
+    @TableField("sort_order")
     private Integer sortOrder = 0;
 
-    @Column(name = "icon", length = 50)
+    @TableField("icon")
     private String icon;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
 
-    @ManyToMany(mappedBy = "permissions", fetch = FetchType.LAZY)
+    @TableField(exist = false)
+    private Permission parent;
+
+    @TableField(exist = false)
+    private List<Permission> children = new ArrayList<>();
+
+    @TableField(exist = false)
     private List<Role> roles = new ArrayList<>();
 }

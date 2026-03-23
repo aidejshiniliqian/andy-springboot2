@@ -6,8 +6,9 @@ import com.andy.warehouse.dto.material.MaterialCategoryUpdateRequest;
 import com.andy.warehouse.entity.MaterialCategory;
 import com.andy.warehouse.exception.BusinessException;
 import com.andy.warehouse.exception.ResourceNotFoundException;
-import com.andy.warehouse.repository.MaterialCategoryRepository;
+import com.andy.warehouse.mapper.MaterialCategoryMapper;
 import com.andy.warehouse.service.MaterialCategoryService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
@@ -22,12 +23,12 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MaterialCategoryServiceImpl implements MaterialCategoryService {
 
-    private final MaterialCategoryRepository categoryRepository;
+    private final MaterialCategoryMapper categoryMapper;
 
     @Override
     @Transactional
     public MaterialCategoryDTO createCategory(MaterialCategoryCreateRequest request) {
-        if (categoryRepository.existsByCategoryCode(request.getCategoryCode())) {
+        if (categoryMapper.existsByCategoryCode(request.getCategoryCode())) {
             throw new BusinessException("分类编码已存在");
         }
 
@@ -35,21 +36,17 @@ public class MaterialCategoryServiceImpl implements MaterialCategoryService {
         BeanUtils.copyProperties(request, category);
         category.setStatus(1);
 
-        if (request.getParentId() != null) {
-            MaterialCategory parent = categoryRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("父分类不存在"));
-            category.setParent(parent);
-        }
-
-        MaterialCategory savedCategory = categoryRepository.save(category);
-        return convertToDTO(savedCategory);
+        categoryMapper.insert(category);
+        return convertToDTO(category);
     }
 
     @Override
     @Transactional
     public MaterialCategoryDTO updateCategory(Long id, MaterialCategoryUpdateRequest request) {
-        MaterialCategory category = categoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("物资分类不存在"));
+        MaterialCategory category = categoryMapper.selectById(id);
+        if (category == null) {
+            throw new ResourceNotFoundException("物资分类不存在");
+        }
 
         if (StringUtils.hasText(request.getCategoryName())) {
             category.setCategoryName(request.getCategoryName());
@@ -63,36 +60,36 @@ public class MaterialCategoryServiceImpl implements MaterialCategoryService {
         if (request.getStatus() != null) {
             category.setStatus(request.getStatus());
         }
-
         if (request.getParentId() != null) {
-            MaterialCategory parent = categoryRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("父分类不存在"));
-            category.setParent(parent);
+            category.setParentId(request.getParentId());
         }
 
-        MaterialCategory updatedCategory = categoryRepository.save(category);
-        return convertToDTO(updatedCategory);
+        categoryMapper.updateById(category);
+        return convertToDTO(category);
     }
 
     @Override
     @Transactional
     public void deleteCategory(Long id) {
-        MaterialCategory category = categoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("物资分类不存在"));
-        category.setIsDeleted(true);
-        categoryRepository.save(category);
+        MaterialCategory category = categoryMapper.selectById(id);
+        if (category == null) {
+            throw new ResourceNotFoundException("物资分类不存在");
+        }
+        categoryMapper.deleteById(id);
     }
 
     @Override
     public MaterialCategoryDTO getCategoryById(Long id) {
-        MaterialCategory category = categoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("物资分类不存在"));
+        MaterialCategory category = categoryMapper.selectById(id);
+        if (category == null) {
+            throw new ResourceNotFoundException("物资分类不存在");
+        }
         return convertToDTO(category);
     }
 
     @Override
     public List<MaterialCategoryDTO> getCategoryTree() {
-        List<MaterialCategory> rootCategories = categoryRepository.findByParentIsNullAndStatusOrderBySortOrderAsc(1);
+        List<MaterialCategory> rootCategories = categoryMapper.findByParentIsNullAndStatusOrderBySortOrderAsc(1);
         return rootCategories.stream()
                 .map(this::convertToTreeDTO)
                 .collect(Collectors.toList());
@@ -100,7 +97,7 @@ public class MaterialCategoryServiceImpl implements MaterialCategoryService {
 
     @Override
     public List<MaterialCategoryDTO> getAllCategories() {
-        return categoryRepository.findByStatus(1).stream()
+        return categoryMapper.findByStatus(1).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -108,30 +105,36 @@ public class MaterialCategoryServiceImpl implements MaterialCategoryService {
     @Override
     @Transactional
     public void updateCategoryStatus(Long id, Integer status) {
-        MaterialCategory category = categoryRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("物资分类不存在"));
+        MaterialCategory category = categoryMapper.selectById(id);
+        if (category == null) {
+            throw new ResourceNotFoundException("物资分类不存在");
+        }
         category.setStatus(status);
-        categoryRepository.save(category);
+        categoryMapper.updateById(category);
     }
 
     private MaterialCategoryDTO convertToDTO(MaterialCategory category) {
         MaterialCategoryDTO dto = new MaterialCategoryDTO();
         BeanUtils.copyProperties(category, dto);
-        if (category.getParent() != null) {
-            dto.setParentId(category.getParent().getId());
-            dto.setParentName(category.getParent().getCategoryName());
+        if (category.getParentId() != null) {
+            dto.setParentId(category.getParentId());
+            MaterialCategory parent = categoryMapper.selectById(category.getParentId());
+            if (parent != null) {
+                dto.setParentName(parent.getCategoryName());
+            }
         }
         return dto;
     }
 
     private MaterialCategoryDTO convertToTreeDTO(MaterialCategory category) {
         MaterialCategoryDTO dto = convertToDTO(category);
-        if (!CollectionUtils.isEmpty(category.getChildren())) {
-            List<MaterialCategoryDTO> children = category.getChildren().stream()
+        List<MaterialCategory> children = categoryMapper.findByParentIdAndStatusOrderBySortOrderAsc(category.getId(), 1);
+        if (!CollectionUtils.isEmpty(children)) {
+            List<MaterialCategoryDTO> childrenDTO = children.stream()
                     .filter(child -> !Boolean.TRUE.equals(child.getIsDeleted()) && child.getStatus() == 1)
                     .map(this::convertToTreeDTO)
                     .collect(Collectors.toList());
-            dto.setChildren(children);
+            dto.setChildren(childrenDTO);
         }
         return dto;
     }

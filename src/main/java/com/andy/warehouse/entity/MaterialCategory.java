@@ -1,40 +1,42 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "wms_material_category")
+@TableName("wms_material_category")
 @Getter
 @Setter
 public class MaterialCategory extends BaseEntity {
 
-    @Column(name = "category_code", nullable = false, length = 50)
+    @TableField("category_code")
     private String categoryCode;
 
-    @Column(name = "category_name", nullable = false, length = 100)
+    @TableField("category_name")
     private String categoryName;
 
-    @Column(name = "description", length = 500)
+    @TableField("description")
     private String description;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "parent_id")
-    private MaterialCategory parent;
+    @TableField("parent_id")
+    private Long parentId;
 
-    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private List<MaterialCategory> children = new ArrayList<>();
-
-    @Column(name = "sort_order")
+    @TableField("sort_order")
     private Integer sortOrder = 0;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
 
-    @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @TableField(exist = false)
+    private MaterialCategory parent;
+
+    @TableField(exist = false)
+    private List<MaterialCategory> children = new ArrayList<>();
+
+    @TableField(exist = false)
     private List<Material> materials = new ArrayList<>();
 }

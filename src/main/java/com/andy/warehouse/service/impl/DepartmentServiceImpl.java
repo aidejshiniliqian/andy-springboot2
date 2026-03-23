@@ -7,8 +7,8 @@ import com.andy.warehouse.entity.Department;
 import com.andy.warehouse.entity.Organization;
 import com.andy.warehouse.exception.BusinessException;
 import com.andy.warehouse.exception.ResourceNotFoundException;
-import com.andy.warehouse.repository.DepartmentRepository;
-import com.andy.warehouse.repository.OrganizationRepository;
+import com.andy.warehouse.mapper.DepartmentMapper;
+import com.andy.warehouse.mapper.OrganizationMapper;
 import com.andy.warehouse.service.DepartmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -24,39 +24,36 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class DepartmentServiceImpl implements DepartmentService {
 
-    private final DepartmentRepository departmentRepository;
-    private final OrganizationRepository organizationRepository;
+    private final DepartmentMapper departmentMapper;
+    private final OrganizationMapper organizationMapper;
 
     @Override
     @Transactional
     public DepartmentDTO createDepartment(DepartmentCreateRequest request) {
-        Organization org = organizationRepository.findById(request.getOrgId())
-                .orElseThrow(() -> new ResourceNotFoundException("组织机构不存在"));
+        Organization org = organizationMapper.selectById(request.getOrgId());
+        if (org == null) {
+            throw new ResourceNotFoundException("组织机构不存在");
+        }
 
-        if (departmentRepository.existsByDeptCode(request.getDeptCode())) {
+        if (departmentMapper.existsByDeptCode(request.getDeptCode())) {
             throw new BusinessException("部门编码已存在");
         }
 
         Department dept = new Department();
         BeanUtils.copyProperties(request, dept);
-        dept.setOrganization(org);
         dept.setStatus(1);
 
-        if (request.getParentId() != null) {
-            Department parent = departmentRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("父部门不存在"));
-            dept.setParent(parent);
-        }
-
-        Department savedDept = departmentRepository.save(dept);
-        return convertToDTO(savedDept);
+        departmentMapper.insert(dept);
+        return convertToDTO(dept);
     }
 
     @Override
     @Transactional
     public DepartmentDTO updateDepartment(Long id, DepartmentUpdateRequest request) {
-        Department dept = departmentRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("部门不存在"));
+        Department dept = departmentMapper.selectById(id);
+        if (dept == null) {
+            throw new ResourceNotFoundException("部门不存在");
+        }
 
         if (StringUtils.hasText(request.getDeptName())) {
             dept.setDeptName(request.getDeptName());
@@ -70,36 +67,36 @@ public class DepartmentServiceImpl implements DepartmentService {
         if (request.getStatus() != null) {
             dept.setStatus(request.getStatus());
         }
-
         if (request.getParentId() != null) {
-            Department parent = departmentRepository.findById(request.getParentId())
-                    .orElseThrow(() -> new ResourceNotFoundException("父部门不存在"));
-            dept.setParent(parent);
+            dept.setParentId(request.getParentId());
         }
 
-        Department updatedDept = departmentRepository.save(dept);
-        return convertToDTO(updatedDept);
+        departmentMapper.updateById(dept);
+        return convertToDTO(dept);
     }
 
     @Override
     @Transactional
     public void deleteDepartment(Long id) {
-        Department dept = departmentRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("部门不存在"));
-        dept.setIsDeleted(true);
-        departmentRepository.save(dept);
+        Department dept = departmentMapper.selectById(id);
+        if (dept == null) {
+            throw new ResourceNotFoundException("部门不存在");
+        }
+        departmentMapper.deleteById(id);
     }
 
     @Override
     public DepartmentDTO getDepartmentById(Long id) {
-        Department dept = departmentRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("部门不存在"));
+        Department dept = departmentMapper.selectById(id);
+        if (dept == null) {
+            throw new ResourceNotFoundException("部门不存在");
+        }
         return convertToDTO(dept);
     }
 
     @Override
     public List<DepartmentDTO> getDepartmentTree(Long orgId) {
-        List<Department> rootDepts = departmentRepository.findByParentIsNullAndOrganizationIdAndStatusOrderBySortOrderAsc(orgId, 1);
+        List<Department> rootDepts = departmentMapper.findByParentIsNullAndOrganizationIdAndStatusOrderBySortOrderAsc(orgId, 1);
         return rootDepts.stream()
                 .map(this::convertToTreeDTO)
                 .collect(Collectors.toList());
@@ -107,7 +104,7 @@ public class DepartmentServiceImpl implements DepartmentService {
 
     @Override
     public List<DepartmentDTO> getDepartmentsByOrgId(Long orgId) {
-        return departmentRepository.findByOrganizationIdAndStatus(orgId, 1).stream()
+        return departmentMapper.findByOrganizationIdAndStatus(orgId, 1).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -115,34 +112,43 @@ public class DepartmentServiceImpl implements DepartmentService {
     @Override
     @Transactional
     public void updateDepartmentStatus(Long id, Integer status) {
-        Department dept = departmentRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("部门不存在"));
+        Department dept = departmentMapper.selectById(id);
+        if (dept == null) {
+            throw new ResourceNotFoundException("部门不存在");
+        }
         dept.setStatus(status);
-        departmentRepository.save(dept);
+        departmentMapper.updateById(dept);
     }
 
     private DepartmentDTO convertToDTO(Department dept) {
         DepartmentDTO dto = new DepartmentDTO();
         BeanUtils.copyProperties(dept, dto);
-        if (dept.getParent() != null) {
-            dto.setParentId(dept.getParent().getId());
-            dto.setParentName(dept.getParent().getDeptName());
+        if (dept.getParentId() != null) {
+            dto.setParentId(dept.getParentId());
+            Department parent = departmentMapper.selectById(dept.getParentId());
+            if (parent != null) {
+                dto.setParentName(parent.getDeptName());
+            }
         }
-        if (dept.getOrganization() != null) {
-            dto.setOrgId(dept.getOrganization().getId());
-            dto.setOrgName(dept.getOrganization().getOrgName());
+        if (dept.getOrgId() != null) {
+            dto.setOrgId(dept.getOrgId());
+            Organization org = organizationMapper.selectById(dept.getOrgId());
+            if (org != null) {
+                dto.setOrgName(org.getOrgName());
+            }
         }
         return dto;
     }
 
     private DepartmentDTO convertToTreeDTO(Department dept) {
         DepartmentDTO dto = convertToDTO(dept);
-        if (!CollectionUtils.isEmpty(dept.getChildren())) {
-            List<DepartmentDTO> children = dept.getChildren().stream()
+        List<Department> children = departmentMapper.findByParentIdAndStatusOrderBySortOrderAsc(dept.getId(), 1);
+        if (!CollectionUtils.isEmpty(children)) {
+            List<DepartmentDTO> childrenDTO = children.stream()
                     .filter(child -> !Boolean.TRUE.equals(child.getIsDeleted()) && child.getStatus() == 1)
                     .map(this::convertToTreeDTO)
                     .collect(Collectors.toList());
-            dto.setChildren(children);
+            dto.setChildren(childrenDTO);
         }
         return dto;
     }

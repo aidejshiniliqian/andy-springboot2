@@ -1,50 +1,57 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
-@Entity
-@Table(name = "wms_inventory")
+@TableName("wms_inventory")
 @Getter
 @Setter
 public class Inventory extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "material_id", nullable = false)
-    private Material material;
+    @TableField("material_id")
+    private Long materialId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id", nullable = false)
-    private Warehouse warehouse;
+    @TableField("warehouse_id")
+    private Long warehouseId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "location_id")
-    private WarehouseLocation location;
+    @TableField("location_id")
+    private Long locationId;
 
-    @Column(name = "quantity", precision = 15, scale = 2, nullable = false)
+    @TableField("quantity")
     private BigDecimal quantity;
 
-    @Column(name = "available_quantity", precision = 15, scale = 2)
+    @TableField("available_quantity")
     private BigDecimal availableQuantity;
 
-    @Column(name = "locked_quantity", precision = 15, scale = 2)
+    @TableField("locked_quantity")
     private BigDecimal lockedQuantity;
 
-    @Column(name = "unit", length = 20)
+    @TableField("unit")
     private String unit;
 
-    @Column(name = "batch_no", length = 50)
+    @TableField("batch_no")
     private String batchNo;
 
-    @Column(name = "production_date")
-    private java.time.LocalDate productionDate;
+    @TableField("production_date")
+    private LocalDate productionDate;
 
-    @Column(name = "expiry_date")
-    private java.time.LocalDate expiryDate;
+    @TableField("expiry_date")
+    private LocalDate expiryDate;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
+
+    @TableField(exist = false)
+    private Material material;
+
+    @TableField(exist = false)
+    private Warehouse warehouse;
+
+    @TableField(exist = false)
+    private WarehouseLocation location;
 }

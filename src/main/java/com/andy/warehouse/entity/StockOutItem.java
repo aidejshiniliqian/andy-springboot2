@@ -1,50 +1,56 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
 
-@Entity
-@Table(name = "wms_stock_out_item")
+@TableName("wms_stock_out_item")
 @Getter
 @Setter
 public class StockOutItem extends BaseEntity {
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "stock_out_order_id", nullable = false)
-    private StockOutOrder stockOutOrder;
+    @TableField("stock_out_order_id")
+    private Long stockOutOrderId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "material_id", nullable = false)
-    private Material material;
+    @TableField("material_id")
+    private Long materialId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "location_id")
-    private WarehouseLocation location;
+    @TableField("location_id")
+    private Long locationId;
 
-    @Column(name = "quantity", precision = 15, scale = 2, nullable = false)
+    @TableField("quantity")
     private BigDecimal quantity;
 
-    @Column(name = "actual_quantity", precision = 15, scale = 2)
+    @TableField("actual_quantity")
     private BigDecimal actualQuantity;
 
-    @Column(name = "unit", length = 20)
+    @TableField("unit")
     private String unit;
 
-    @Column(name = "unit_price", precision = 15, scale = 2)
+    @TableField("unit_price")
     private BigDecimal unitPrice;
 
-    @Column(name = "total_amount", precision = 15, scale = 2)
+    @TableField("total_amount")
     private BigDecimal totalAmount;
 
-    @Column(name = "batch_no", length = 50)
+    @TableField("batch_no")
     private String batchNo;
 
-    @Column(name = "remark", length = 200)
+    @TableField("remark")
     private String remark;
 
-    @Column(name = "status", length = 20)
+    @TableField("status")
     private String status;
+
+    @TableField(exist = false)
+    private StockOutOrder stockOutOrder;
+
+    @TableField(exist = false)
+    private Material material;
+
+    @TableField(exist = false)
+    private WarehouseLocation location;
 }

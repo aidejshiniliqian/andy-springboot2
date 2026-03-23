@@ -1,61 +1,61 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "sys_user")
+@TableName("sys_user")
 @Getter
 @Setter
 public class User extends BaseEntity {
 
-    @Column(name = "username", unique = true, nullable = false, length = 50)
+    @TableField("username")
     private String username;
 
-    @Column(name = "password", nullable = false, length = 100)
+    @TableField("password")
     private String password;
 
-    @Column(name = "real_name", length = 50)
+    @TableField("real_name")
     private String realName;
 
-    @Column(name = "email", length = 100)
+    @TableField("email")
     private String email;
 
-    @Column(name = "phone", length = 20)
+    @TableField("phone")
     private String phone;
 
-    @Column(name = "avatar", length = 200)
+    @TableField("avatar")
     private String avatar;
 
-    @Column(name = "gender")
+    @TableField("gender")
     private Integer gender;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "org_id")
-    private Organization organization;
+    @TableField("org_id")
+    private Long orgId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "dept_id")
-    private Department department;
+    @TableField("dept_id")
+    private Long deptId;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
 
-    @Column(name = "last_login_time")
-    private java.time.LocalDateTime lastLoginTime;
+    @TableField("last_login_time")
+    private LocalDateTime lastLoginTime;
 
-    @Column(name = "last_login_ip", length = 50)
+    @TableField("last_login_ip")
     private String lastLoginIp;
 
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "sys_user_role",
-        joinColumns = @JoinColumn(name = "user_id"),
-        inverseJoinColumns = @JoinColumn(name = "role_id")
-    )
+    @TableField(exist = false)
+    private Organization organization;
+
+    @TableField(exist = false)
+    private Department department;
+
+    @TableField(exist = false)
     private List<Role> roles = new ArrayList<>();
 }

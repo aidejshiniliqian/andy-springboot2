@@ -1,6 +1,7 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -8,47 +9,50 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "wms_warehouse_location")
+@TableName("wms_warehouse_location")
 @Getter
 @Setter
 public class WarehouseLocation extends BaseEntity {
 
-    @Column(name = "location_code", nullable = false, length = 50)
+    @TableField("location_code")
     private String locationCode;
 
-    @Column(name = "location_name", nullable = false, length = 100)
+    @TableField("location_name")
     private String locationName;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "zone_id", nullable = false)
-    private WarehouseZone zone;
+    @TableField("zone_id")
+    private Long zoneId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id", nullable = false)
-    private Warehouse warehouse;
+    @TableField("warehouse_id")
+    private Long warehouseId;
 
-    @Column(name = "capacity", precision = 15, scale = 2)
+    @TableField("capacity")
     private BigDecimal capacity;
 
-    @Column(name = "length", precision = 10, scale = 2)
+    @TableField("length")
     private BigDecimal length;
 
-    @Column(name = "width", precision = 10, scale = 2)
+    @TableField("width")
     private BigDecimal width;
 
-    @Column(name = "height", precision = 10, scale = 2)
+    @TableField("height")
     private BigDecimal height;
 
-    @Column(name = "max_weight", precision = 10, scale = 2)
+    @TableField("max_weight")
     private BigDecimal maxWeight;
 
-    @Column(name = "description", length = 500)
+    @TableField("description")
     private String description;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
 
-    @OneToMany(mappedBy = "location", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @TableField(exist = false)
+    private WarehouseZone zone;
+
+    @TableField(exist = false)
+    private Warehouse warehouse;
+
+    @TableField(exist = false)
     private List<Inventory> inventories = new ArrayList<>();
 }

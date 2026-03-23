@@ -1,6 +1,7 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -8,52 +9,53 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "wms_material")
+@TableName("wms_material")
 @Getter
 @Setter
 public class Material extends BaseEntity {
 
-    @Column(name = "material_code", unique = true, nullable = false, length = 50)
+    @TableField("material_code")
     private String materialCode;
 
-    @Column(name = "material_name", nullable = false, length = 100)
+    @TableField("material_name")
     private String materialName;
 
-    @Column(name = "specification", length = 200)
+    @TableField("specification")
     private String specification;
 
-    @Column(name = "model", length = 50)
+    @TableField("model")
     private String model;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "category_id")
-    private MaterialCategory category;
+    @TableField("category_id")
+    private Long categoryId;
 
-    @Column(name = "unit", length = 20)
+    @TableField("unit")
     private String unit;
 
-    @Column(name = "barcode", length = 50)
+    @TableField("barcode")
     private String barcode;
 
-    @Column(name = "purchase_price", precision = 15, scale = 2)
+    @TableField("purchase_price")
     private BigDecimal purchasePrice;
 
-    @Column(name = "sale_price", precision = 15, scale = 2)
+    @TableField("sale_price")
     private BigDecimal salePrice;
 
-    @Column(name = "safety_stock", precision = 15, scale = 2)
+    @TableField("safety_stock")
     private BigDecimal safetyStock;
 
-    @Column(name = "max_stock", precision = 15, scale = 2)
+    @TableField("max_stock")
     private BigDecimal maxStock;
 
-    @Column(name = "description", length = 500)
+    @TableField("description")
     private String description;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
 
-    @OneToMany(mappedBy = "material", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @TableField(exist = false)
+    private MaterialCategory category;
+
+    @TableField(exist = false)
     private List<Inventory> inventories = new ArrayList<>();
 }

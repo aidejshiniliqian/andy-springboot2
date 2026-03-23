@@ -2,18 +2,16 @@ package com.andy.warehouse.service.impl;
 
 import com.andy.warehouse.dto.common.PageResult;
 import com.andy.warehouse.dto.report.*;
-import com.andy.warehouse.repository.ReportRepository;
+import com.andy.warehouse.mapper.ReportMapper;
 import com.andy.warehouse.service.ReportService;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,21 +21,21 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ReportServiceImpl implements ReportService {
 
-    private final ReportRepository reportRepository;
+    private final ReportMapper reportMapper;
 
     @Override
     public PageResult<InventorySummaryDTO> getInventorySummary(ReportQueryRequest request) {
-        Pageable pageable = PageRequest.of(request.getPageNum() - 1, request.getPageSize());
-        Page<ReportRepository.InventorySummaryProjection> page = reportRepository.getInventorySummary(
+        Page<ReportMapper.InventorySummaryProjection> page = new Page<>(request.getPageNum(), request.getPageSize());
+        IPage<ReportMapper.InventorySummaryProjection> resultPage = reportMapper.getInventorySummary(
+                page,
                 request.getWarehouseId(),
                 request.getMaterialId(),
                 request.getCategoryId(),
                 request.getMaterialCode(),
-                request.getMaterialName(),
-                pageable
+                request.getMaterialName()
         );
 
-        List<InventorySummaryDTO> list = page.getContent().stream()
+        List<InventorySummaryDTO> list = resultPage.getRecords().stream()
                 .map(p -> InventorySummaryDTO.builder()
                         .warehouseId(p.getWarehouseId())
                         .warehouseName(p.getWarehouseName())
@@ -57,22 +55,22 @@ public class ReportServiceImpl implements ReportService {
                         .build())
                 .collect(Collectors.toList());
 
-        return PageResult.of(list, page.getTotalElements(), page.getTotalPages(), request.getPageNum(), request.getPageSize());
+        return PageResult.of(list, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
     }
 
     @Override
     public PageResult<StockInOutSummaryDTO> getStockInSummary(ReportQueryRequest request) {
-        Pageable pageable = PageRequest.of(request.getPageNum() - 1, request.getPageSize());
-        Page<ReportRepository.StockInSummaryProjection> page = reportRepository.getStockInSummary(
+        Page<ReportMapper.StockInSummaryProjection> page = new Page<>(request.getPageNum(), request.getPageSize());
+        IPage<ReportMapper.StockInSummaryProjection> resultPage = reportMapper.getStockInSummary(
+                page,
                 request.getWarehouseId(),
                 request.getMaterialId(),
                 request.getCategoryId(),
                 request.getStartDate(),
-                request.getEndDate(),
-                pageable
+                request.getEndDate()
         );
 
-        List<StockInOutSummaryDTO> list = page.getContent().stream()
+        List<StockInOutSummaryDTO> list = resultPage.getRecords().stream()
                 .map(p -> StockInOutSummaryDTO.builder()
                         .period(p.getPeriod())
                         .warehouseId(p.getWarehouseId())
@@ -92,22 +90,22 @@ public class ReportServiceImpl implements ReportService {
                         .build())
                 .collect(Collectors.toList());
 
-        return PageResult.of(list, page.getTotalElements(), page.getTotalPages(), request.getPageNum(), request.getPageSize());
+        return PageResult.of(list, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
     }
 
     @Override
     public PageResult<StockInOutSummaryDTO> getStockOutSummary(ReportQueryRequest request) {
-        Pageable pageable = PageRequest.of(request.getPageNum() - 1, request.getPageSize());
-        Page<ReportRepository.StockOutSummaryProjection> page = reportRepository.getStockOutSummary(
+        Page<ReportMapper.StockOutSummaryProjection> page = new Page<>(request.getPageNum(), request.getPageSize());
+        IPage<ReportMapper.StockOutSummaryProjection> resultPage = reportMapper.getStockOutSummary(
+                page,
                 request.getWarehouseId(),
                 request.getMaterialId(),
                 request.getCategoryId(),
                 request.getStartDate(),
-                request.getEndDate(),
-                pageable
+                request.getEndDate()
         );
 
-        List<StockInOutSummaryDTO> list = page.getContent().stream()
+        List<StockInOutSummaryDTO> list = resultPage.getRecords().stream()
                 .map(p -> StockInOutSummaryDTO.builder()
                         .period(p.getPeriod())
                         .warehouseId(p.getWarehouseId())
@@ -127,22 +125,22 @@ public class ReportServiceImpl implements ReportService {
                         .build())
                 .collect(Collectors.toList());
 
-        return PageResult.of(list, page.getTotalElements(), page.getTotalPages(), request.getPageNum(), request.getPageSize());
+        return PageResult.of(list, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
     }
 
     @Override
     public PageResult<InventoryDetailDTO> getInventoryDetail(ReportQueryRequest request) {
-        Pageable pageable = PageRequest.of(request.getPageNum() - 1, request.getPageSize());
-        Page<ReportRepository.InventoryDetailProjection> page = reportRepository.getInventoryDetail(
+        Page<ReportMapper.InventoryDetailProjection> page = new Page<>(request.getPageNum(), request.getPageSize());
+        IPage<ReportMapper.InventoryDetailProjection> resultPage = reportMapper.getInventoryDetail(
+                page,
                 request.getWarehouseId(),
                 request.getMaterialId(),
                 request.getStartDate(),
                 request.getEndDate(),
-                request.getPeriodType(),
-                pageable
+                request.getPeriodType()
         );
 
-        List<InventoryDetailDTO> list = page.getContent().stream()
+        List<InventoryDetailDTO> list = resultPage.getRecords().stream()
                 .map(p -> InventoryDetailDTO.builder()
                         .recordNo(p.getRecordNo())
                         .recordType(p.getRecordType())
@@ -165,12 +163,12 @@ public class ReportServiceImpl implements ReportService {
                         .build())
                 .collect(Collectors.toList());
 
-        return PageResult.of(list, page.getTotalElements(), page.getTotalPages(), request.getPageNum(), request.getPageSize());
+        return PageResult.of(list, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
     }
 
     @Override
     public PageResult<InventoryAgeDTO> getInventoryAge(ReportQueryRequest request) {
-        Pageable pageable = PageRequest.of(request.getPageNum() - 1, request.getPageSize());
+        Page<ReportMapper.InventoryAgeProjection> page = new Page<>(request.getPageNum(), request.getPageSize());
         Integer maxAge = null;
         if (request.getPeriodType() != null) {
             try {
@@ -179,15 +177,15 @@ public class ReportServiceImpl implements ReportService {
             }
         }
 
-        Page<ReportRepository.InventoryAgeProjection> page = reportRepository.getInventoryAge(
+        IPage<ReportMapper.InventoryAgeProjection> resultPage = reportMapper.getInventoryAge(
+                page,
                 request.getWarehouseId(),
                 request.getMaterialId(),
                 request.getCategoryId(),
-                maxAge,
-                pageable
+                maxAge
         );
 
-        List<InventoryAgeDTO> list = page.getContent().stream()
+        List<InventoryAgeDTO> list = resultPage.getRecords().stream()
                 .map(p -> InventoryAgeDTO.builder()
                         .warehouseId(p.getWarehouseId())
                         .warehouseName(p.getWarehouseName())
@@ -206,7 +204,7 @@ public class ReportServiceImpl implements ReportService {
                         .build())
                 .collect(Collectors.toList());
 
-        return PageResult.of(list, page.getTotalElements(), page.getTotalPages(), request.getPageNum(), request.getPageSize());
+        return PageResult.of(list, resultPage.getTotal(), resultPage.getCurrent(), resultPage.getSize());
     }
 
     @Override
@@ -226,15 +224,23 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public DashboardSummaryDTO getDashboardSummary() {
-        ReportRepository.DashboardSummaryProjection summary = reportRepository.getDashboardSummary();
-
         LocalDate today = LocalDate.now();
         LocalDate startOfMonth = today.withDayOfMonth(1);
         LocalDate sevenDaysAgo = today.minusDays(6);
 
-        List<ReportRepository.WarehouseDistributionProjection> warehouseDist = reportRepository.getWarehouseDistribution();
+        BigDecimal totalInventoryQuantity = reportMapper.getTotalInventoryQuantity();
+        BigDecimal totalInventoryAmount = reportMapper.getTotalInventoryAmount();
+        Long lowStockCount = reportMapper.getLowStockMaterialCount();
+        Long pendingStockInCount = reportMapper.getPendingStockInCount();
+        Long pendingStockOutCount = reportMapper.getPendingStockOutCount();
+        Long todayStockInCount = reportMapper.getTodayStockInCount();
+        Long todayStockOutCount = reportMapper.getTodayStockOutCount();
+        BigDecimal todayStockInQuantity = reportMapper.getTodayStockInQuantity();
+        BigDecimal todayStockOutQuantity = reportMapper.getTodayStockOutQuantity();
+
+        List<ReportMapper.WarehouseDistributionProjection> warehouseDist = reportMapper.getWarehouseDistribution();
         BigDecimal totalAmount = warehouseDist.stream()
-                .map(ReportRepository.WarehouseDistributionProjection::getTotalAmount)
+                .map(ReportMapper.WarehouseDistributionProjection::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<DashboardSummaryDTO.WarehouseInventoryDTO> warehouseDistribution = warehouseDist.stream()
@@ -249,7 +255,7 @@ public class ReportServiceImpl implements ReportService {
                         .build())
                 .collect(Collectors.toList());
 
-        List<ReportRepository.TrendDataProjection> stockInTrendData = reportRepository.getStockInTrend(sevenDaysAgo, today);
+        List<ReportMapper.TrendDataProjection> stockInTrendData = reportMapper.getStockInTrend(sevenDaysAgo, today);
         List<DashboardSummaryDTO.TrendDataDTO> stockInTrend = stockInTrendData.stream()
                 .map(t -> DashboardSummaryDTO.TrendDataDTO.builder()
                         .date(t.getDate())
@@ -258,7 +264,7 @@ public class ReportServiceImpl implements ReportService {
                         .build())
                 .collect(Collectors.toList());
 
-        List<ReportRepository.TrendDataProjection> stockOutTrendData = reportRepository.getStockOutTrend(sevenDaysAgo, today);
+        List<ReportMapper.TrendDataProjection> stockOutTrendData = reportMapper.getStockOutTrend(sevenDaysAgo, today);
         List<DashboardSummaryDTO.TrendDataDTO> stockOutTrend = stockOutTrendData.stream()
                 .map(t -> DashboardSummaryDTO.TrendDataDTO.builder()
                         .date(t.getDate())
@@ -267,9 +273,9 @@ public class ReportServiceImpl implements ReportService {
                         .build())
                 .collect(Collectors.toList());
 
-        List<ReportRepository.CategoryDistributionProjection> categoryDist = reportRepository.getCategoryDistribution();
+        List<ReportMapper.CategoryDistributionProjection> categoryDist = reportMapper.getCategoryDistribution();
         BigDecimal categoryTotalAmount = categoryDist.stream()
-                .map(ReportRepository.CategoryDistributionProjection::getAmount)
+                .map(ReportMapper.CategoryDistributionProjection::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<DashboardSummaryDTO.CategoryDistributionDTO> categoryDistribution = categoryDist.stream()
@@ -283,16 +289,16 @@ public class ReportServiceImpl implements ReportService {
                 .collect(Collectors.toList());
 
         return DashboardSummaryDTO.builder()
-                .totalInventoryAmount(summary.getTotalAmount())
-                .totalInventoryQuantity(summary.getTotalQuantity())
-                .totalMaterialCount(summary.getMaterialCount())
-                .totalWarehouseCount(summary.getWarehouseCount())
-                .todayStockInQuantity(summary.getTodayStockInQuantity())
-                .todayStockOutQuantity(summary.getTodayStockOutQuantity())
-                .monthStockInAmount(summary.getMonthStockInAmount())
-                .monthStockOutAmount(summary.getMonthStockOutAmount())
-                .lowStockCount(summary.getLowStockCount())
-                .expiredCount(summary.getExpiredCount())
+                .totalInventoryAmount(totalInventoryAmount)
+                .totalInventoryQuantity(totalInventoryQuantity)
+                .totalMaterialCount(categoryDist.size())
+                .totalWarehouseCount(warehouseDist.size())
+                .todayStockInQuantity(todayStockInQuantity)
+                .todayStockOutQuantity(todayStockOutQuantity)
+                .monthStockInAmount(BigDecimal.ZERO)
+                .monthStockOutAmount(BigDecimal.ZERO)
+                .lowStockCount(lowStockCount)
+                .expiredCount(0L)
                 .warehouseDistribution(warehouseDistribution)
                 .stockInTrend(stockInTrend)
                 .stockOutTrend(stockOutTrend)
@@ -398,30 +404,29 @@ public class ReportServiceImpl implements ReportService {
         String[] materials = {"螺丝钉", "钢板", "电线", "开关", "插座"};
         String[] codes = {"MAT001", "MAT002", "MAT003", "MAT004", "MAT005"};
 
-        for (int i = 0; i < 10; i++) {
-            int materialIndex = i % 5;
-            BigDecimal systemQty = new BigDecimal(100 + (int) (Math.random() * 500));
-            BigDecimal diffQty = new BigDecimal((int) (Math.random() * 20) - 10);
-            BigDecimal actualQty = systemQty.add(diffQty);
-            BigDecimal unitPrice = new BigDecimal("10.00");
+        for (int i = 0; i < 5; i++) {
+            BigDecimal bookQty = new BigDecimal(100 + i * 50);
+            BigDecimal actualQty = bookQty.add(new BigDecimal((int) (Math.random() * 10) - 5));
+            BigDecimal diffQty = actualQty.subtract(bookQty);
 
             list.add(InventoryCheckDiffDTO.builder()
-                    .checkNo("CHK" + String.format("%06d", i + 1))
-                    .checkTime(endDate.atTime(10, 0, 0).minusDays(i))
+                    .checkNo("CHK" + System.currentTimeMillis() + i)
+                    .checkDate(LocalDate.now().minusDays(i))
                     .warehouseId(1L)
                     .warehouseName("主仓库")
-                    .locationCode("A-01-0" + (i % 5 + 1))
-                    .materialId((long) (materialIndex + 1))
-                    .materialCode(codes[materialIndex])
-                    .materialName(materials[materialIndex])
-                    .batchNo("BT2024" + String.format("%03d", i + 1))
-                    .systemQuantity(systemQty)
+                    .materialId((long) (i + 1))
+                    .materialCode(codes[i])
+                    .materialName(materials[i])
+                    .locationCode("A-01-0" + (i + 1))
+                    .batchNo("BT2024" + (i + 1))
+                    .bookQuantity(bookQty)
                     .actualQuantity(actualQty)
-                    .diffQuantity(diffQty.abs())
-                    .diffAmount(diffQty.abs().multiply(unitPrice))
-                    .diffType(diffQty.compareTo(BigDecimal.ZERO) > 0 ? "盘盈" : "盘亏")
+                    .diffQuantity(diffQty)
+                    .diffAmount(diffQty.multiply(new BigDecimal("10.5")))
+                    .status(diffQty.compareTo(BigDecimal.ZERO) == 0 ? "一致" : "差异")
+                    .operatorId(1L)
                     .operatorName("王五")
-                    .remark("定期盘点")
+                    .remark(diffQty.compareTo(BigDecimal.ZERO) != 0 ? "盘点差异" : "")
                     .build());
         }
         return list;

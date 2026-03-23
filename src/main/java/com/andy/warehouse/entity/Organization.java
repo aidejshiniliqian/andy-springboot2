@@ -1,42 +1,42 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "sys_organization")
+@TableName("sys_organization")
 @Getter
 @Setter
 public class Organization extends BaseEntity {
 
-    @Column(name = "org_code", unique = true, nullable = false, length = 50)
+    @TableField("org_code")
     private String orgCode;
 
-    @Column(name = "org_name", nullable = false, length = 100)
+    @TableField("org_name")
     private String orgName;
 
-    @Column(name = "description", length = 500)
+    @TableField("description")
     private String description;
 
-    @Column(name = "address", length = 200)
+    @TableField("address")
     private String address;
 
-    @Column(name = "contact_person", length = 50)
+    @TableField("contact_person")
     private String contactPerson;
 
-    @Column(name = "contact_phone", length = 20)
+    @TableField("contact_phone")
     private String contactPhone;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
 
-    @OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @TableField(exist = false)
     private List<Department> departments = new ArrayList<>();
 
-    @OneToMany(mappedBy = "organization", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @TableField(exist = false)
     private List<User> users = new ArrayList<>();
 }

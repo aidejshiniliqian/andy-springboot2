@@ -1,6 +1,7 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -8,37 +9,38 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "wms_warehouse_zone")
+@TableName("wms_warehouse_zone")
 @Getter
 @Setter
 public class WarehouseZone extends BaseEntity {
 
-    @Column(name = "zone_code", nullable = false, length = 50)
+    @TableField("zone_code")
     private String zoneCode;
 
-    @Column(name = "zone_name", nullable = false, length = 100)
+    @TableField("zone_name")
     private String zoneName;
 
-    @Column(name = "zone_type", length = 20)
+    @TableField("zone_type")
     private String zoneType;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id", nullable = false)
-    private Warehouse warehouse;
+    @TableField("warehouse_id")
+    private Long warehouseId;
 
-    @Column(name = "area", precision = 10, scale = 2)
+    @TableField("area")
     private BigDecimal area;
 
-    @Column(name = "capacity", precision = 15, scale = 2)
+    @TableField("capacity")
     private BigDecimal capacity;
 
-    @Column(name = "description", length = 500)
+    @TableField("description")
     private String description;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
 
-    @OneToMany(mappedBy = "zone", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @TableField(exist = false)
+    private Warehouse warehouse;
+
+    @TableField(exist = false)
     private List<WarehouseLocation> locations = new ArrayList<>();
 }

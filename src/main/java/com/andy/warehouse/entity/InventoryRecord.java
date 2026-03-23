@@ -1,60 +1,68 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
 
-@Entity
-@Table(name = "wms_inventory_record")
+@TableName("wms_inventory_record")
 @Getter
 @Setter
 public class InventoryRecord extends BaseEntity {
 
-    @Column(name = "record_no", unique = true, nullable = false, length = 50)
+    @TableField("record_no")
     private String recordNo;
 
-    @Column(name = "record_type", length = 20, nullable = false)
+    @TableField("record_type")
     private String recordType;
 
-    @Column(name = "biz_type", length = 20)
+    @TableField("biz_type")
     private String bizType;
 
-    @Column(name = "biz_no", length = 50)
+    @TableField("biz_no")
     private String bizNo;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "material_id", nullable = false)
-    private Material material;
+    @TableField("material_id")
+    private Long materialId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "warehouse_id", nullable = false)
-    private Warehouse warehouse;
+    @TableField("warehouse_id")
+    private Long warehouseId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "location_id")
-    private WarehouseLocation location;
+    @TableField("location_id")
+    private Long locationId;
 
-    @Column(name = "quantity", precision = 15, scale = 2, nullable = false)
+    @TableField("quantity")
     private BigDecimal quantity;
 
-    @Column(name = "before_quantity", precision = 15, scale = 2)
+    @TableField("before_quantity")
     private BigDecimal beforeQuantity;
 
-    @Column(name = "after_quantity", precision = 15, scale = 2)
+    @TableField("after_quantity")
     private BigDecimal afterQuantity;
 
-    @Column(name = "unit", length = 20)
+    @TableField("unit")
     private String unit;
 
-    @Column(name = "batch_no", length = 50)
+    @TableField("batch_no")
     private String batchNo;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "operator_id")
-    private User operator;
+    @TableField("operator_id")
+    private Long operatorId;
 
-    @Column(name = "remark", length = 500)
+    @TableField("remark")
     private String remark;
+
+    @TableField(exist = false)
+    private Material material;
+
+    @TableField(exist = false)
+    private Warehouse warehouse;
+
+    @TableField(exist = false)
+    private WarehouseLocation location;
+
+    @TableField(exist = false)
+    private User operator;
 }

@@ -1,38 +1,33 @@
 package com.andy.warehouse.entity;
 
-import jakarta.persistence.*;
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
 
-@Entity
-@Table(name = "sys_role")
+@TableName("sys_role")
 @Getter
 @Setter
 public class Role extends BaseEntity {
 
-    @Column(name = "role_code", unique = true, nullable = false, length = 50)
+    @TableField("role_code")
     private String roleCode;
 
-    @Column(name = "role_name", nullable = false, length = 100)
+    @TableField("role_name")
     private String roleName;
 
-    @Column(name = "description", length = 500)
+    @TableField("description")
     private String description;
 
-    @Column(name = "status")
+    @TableField("status")
     private Integer status = 1;
 
-    @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "sys_role_permission",
-        joinColumns = @JoinColumn(name = "role_id"),
-        inverseJoinColumns = @JoinColumn(name = "permission_id")
-    )
+    @TableField(exist = false)
     private List<Permission> permissions = new ArrayList<>();
 
-    @ManyToMany(mappedBy = "roles", fetch = FetchType.LAZY)
+    @TableField(exist = false)
     private List<User> users = new ArrayList<>();
 }

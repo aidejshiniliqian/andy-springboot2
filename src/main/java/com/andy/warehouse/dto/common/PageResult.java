@@ -1,5 +1,6 @@
 package com.andy.warehouse.dto.common;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import lombok.Data;
 import org.springframework.data.domain.Page;
 
@@ -30,15 +31,29 @@ public class PageResult<T> {
         return result;
     }
 
-    public static <T> PageResult<T> of(List<T> content, long totalElements, int totalPages, int number, int size) {
+    public static <T> PageResult<T> of(IPage<T> page) {
+        PageResult<T> result = new PageResult<>();
+        result.setContent(page.getRecords());
+        result.setTotalElements(page.getTotal());
+        result.setTotalPages((int) page.getPages());
+        result.setNumber((int) page.getCurrent() - 1);
+        result.setSize((int) page.getSize());
+        result.setFirst(page.getCurrent() <= 1);
+        result.setLast(page.getCurrent() >= page.getPages());
+        result.setEmpty(page.getRecords() == null || page.getRecords().isEmpty());
+        return result;
+    }
+
+    public static <T> PageResult<T> of(List<T> content, long totalElements, long current, long size) {
         PageResult<T> result = new PageResult<>();
         result.setContent(content);
         result.setTotalElements(totalElements);
+        int totalPages = (int) ((totalElements + size - 1) / size);
         result.setTotalPages(totalPages);
-        result.setNumber(number - 1);
-        result.setSize(size);
-        result.setFirst(number <= 1);
-        result.setLast(number >= totalPages);
+        result.setNumber((int) current - 1);
+        result.setSize((int) size);
+        result.setFirst(current <= 1);
+        result.setLast(current >= totalPages);
         result.setEmpty(content == null || content.isEmpty());
         return result;
     }

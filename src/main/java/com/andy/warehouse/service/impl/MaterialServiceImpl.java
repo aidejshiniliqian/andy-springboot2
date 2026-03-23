@@ -6,15 +6,14 @@ import com.andy.warehouse.entity.Material;
 import com.andy.warehouse.entity.MaterialCategory;
 import com.andy.warehouse.exception.BusinessException;
 import com.andy.warehouse.exception.ResourceNotFoundException;
-import com.andy.warehouse.repository.MaterialCategoryRepository;
-import com.andy.warehouse.repository.MaterialRepository;
+import com.andy.warehouse.mapper.MaterialCategoryMapper;
+import com.andy.warehouse.mapper.MaterialMapper;
 import com.andy.warehouse.service.MaterialService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -26,16 +25,16 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class MaterialServiceImpl implements MaterialService {
 
-    private final MaterialRepository materialRepository;
-    private final MaterialCategoryRepository categoryRepository;
+    private final MaterialMapper materialMapper;
+    private final MaterialCategoryMapper categoryMapper;
 
     @Override
     @Transactional
     public MaterialDTO createMaterial(MaterialCreateRequest request) {
-        if (materialRepository.existsByMaterialCode(request.getMaterialCode())) {
+        if (materialMapper.existsByMaterialCode(request.getMaterialCode())) {
             throw new BusinessException("物资编码已存在");
         }
-        if (StringUtils.hasText(request.getBarcode()) && materialRepository.existsByBarcode(request.getBarcode())) {
+        if (StringUtils.hasText(request.getBarcode()) && materialMapper.existsByBarcode(request.getBarcode())) {
             throw new BusinessException("条码已存在");
         }
 
@@ -43,21 +42,17 @@ public class MaterialServiceImpl implements MaterialService {
         BeanUtils.copyProperties(request, material);
         material.setStatus(1);
 
-        if (request.getCategoryId() != null) {
-            MaterialCategory category = categoryRepository.findById(request.getCategoryId())
-                    .orElseThrow(() -> new ResourceNotFoundException("物资分类不存在"));
-            material.setCategory(category);
-        }
-
-        Material savedMaterial = materialRepository.save(material);
-        return convertToDTO(savedMaterial);
+        materialMapper.insert(material);
+        return convertToDTO(material);
     }
 
     @Override
     @Transactional
     public MaterialDTO updateMaterial(Long id, MaterialUpdateRequest request) {
-        Material material = materialRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("物资不存在"));
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            throw new ResourceNotFoundException("物资不存在");
+        }
 
         if (StringUtils.hasText(request.getMaterialName())) {
             material.setMaterialName(request.getMaterialName());
@@ -89,64 +84,68 @@ public class MaterialServiceImpl implements MaterialService {
         if (request.getStatus() != null) {
             material.setStatus(request.getStatus());
         }
-
         if (request.getCategoryId() != null) {
-            MaterialCategory category = categoryRepository.findById(request.getCategoryId())
-                    .orElseThrow(() -> new ResourceNotFoundException("物资分类不存在"));
-            material.setCategory(category);
+            material.setCategoryId(request.getCategoryId());
         }
 
-        Material updatedMaterial = materialRepository.save(material);
-        return convertToDTO(updatedMaterial);
+        materialMapper.updateById(material);
+        return convertToDTO(material);
     }
 
     @Override
     @Transactional
     public void deleteMaterial(Long id) {
-        Material material = materialRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("物资不存在"));
-        material.setIsDeleted(true);
-        materialRepository.save(material);
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            throw new ResourceNotFoundException("物资不存在");
+        }
+        materialMapper.deleteById(id);
     }
 
     @Override
     public MaterialDTO getMaterialById(Long id) {
-        Material material = materialRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("物资不存在"));
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            throw new ResourceNotFoundException("物资不存在");
+        }
         return convertToDTO(material);
     }
 
     @Override
     public MaterialDTO getMaterialByCode(String materialCode) {
-        Material material = materialRepository.findByMaterialCode(materialCode)
+        Material material = materialMapper.findByMaterialCode(materialCode)
                 .orElseThrow(() -> new ResourceNotFoundException("物资不存在"));
         return convertToDTO(material);
     }
 
     @Override
     public PageResult<MaterialDTO> getMaterialList(MaterialQueryRequest request) {
-        Pageable pageable = PageRequest.of(request.getPage(), request.getSize(), Sort.by("createdAt").descending());
-        Page<Material> materialPage = materialRepository.findByConditions(
+        Page<Material> page = new Page<>(request.getPage(), request.getSize());
+        IPage<Material> materialPage = materialMapper.findByConditions(
+                page,
                 request.getMaterialCode(),
                 request.getMaterialName(),
                 request.getCategoryId(),
-                request.getStatus(),
-                pageable
+                request.getStatus()
         );
-        return PageResult.of(materialPage.map(this::convertToDTO));
+        List<MaterialDTO> dtoList = materialPage.getRecords().stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+        return PageResult.of(dtoList, materialPage.getTotal(), materialPage.getCurrent(), materialPage.getSize());
     }
 
     @Override
     public List<MaterialDTO> getAllMaterials() {
-        return materialRepository.findAll().stream()
-                .filter(material -> !Boolean.TRUE.equals(material.getIsDeleted()))
+        LambdaQueryWrapper<Material> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Material::getIsDeleted, false);
+        return materialMapper.selectList(wrapper).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
 
     @Override
     public List<MaterialDTO> getMaterialsByCategoryId(Long categoryId) {
-        return materialRepository.findByCategoryIdAndStatus(categoryId, 1).stream()
+        return materialMapper.findByCategoryIdAndStatus(categoryId, 1).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -154,18 +153,23 @@ public class MaterialServiceImpl implements MaterialService {
     @Override
     @Transactional
     public void updateMaterialStatus(Long id, Integer status) {
-        Material material = materialRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("物资不存在"));
+        Material material = materialMapper.selectById(id);
+        if (material == null) {
+            throw new ResourceNotFoundException("物资不存在");
+        }
         material.setStatus(status);
-        materialRepository.save(material);
+        materialMapper.updateById(material);
     }
 
     private MaterialDTO convertToDTO(Material material) {
         MaterialDTO dto = new MaterialDTO();
         BeanUtils.copyProperties(material, dto);
-        if (material.getCategory() != null) {
-            dto.setCategoryId(material.getCategory().getId());
-            dto.setCategoryName(material.getCategory().getCategoryName());
+        if (material.getCategoryId() != null) {
+            dto.setCategoryId(material.getCategoryId());
+            MaterialCategory category = categoryMapper.selectById(material.getCategoryId());
+            if (category != null) {
+                dto.setCategoryName(category.getCategoryName());
+            }
         }
         return dto;
     }
