@@ -8,8 +8,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "认证管理")
@@ -29,12 +28,17 @@ public class AuthController {
     @Operation(summary = "用户退出登录")
     @PostMapping("/logout")
     public Result<String> logout() {
+        userService.logout();
         return Result.success("退出登录成功");
     }
 
     @Operation(summary = "刷新Token")
     @PostMapping("/refresh")
-    public Result<String> refresh() {
-        return Result.success("Token刷新成功");
+    public Result<LoginResponse> refresh(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        String token = null;
+        if (StringUtils.hasText(authHeader) && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        }
+        return Result.success(userService.refreshToken(token));
     }
 }

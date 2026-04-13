@@ -13,6 +13,10 @@ public interface UserService {
 
     LoginResponse login(LoginRequest request);
 
+    void logout();
+
+    LoginResponse refreshToken(String token);
+
     User create(UserCreateRequest request);
 
     User update(UserUpdateRequest request);
