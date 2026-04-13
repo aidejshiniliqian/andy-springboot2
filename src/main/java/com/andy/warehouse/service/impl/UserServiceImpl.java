@@ -10,6 +10,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -39,6 +40,9 @@ public class UserServiceImpl implements UserService {
     private final JwtTokenUtil jwtTokenUtil;
     private final AuthenticationManager authenticationManager;
 
+    @Value("${jwt.expiration}")
+    private Long expiration;
+
     @Override
     public LoginResponse login(LoginRequest request) {
         Authentication authentication = authenticationManager.authenticate(
@@ -59,6 +63,48 @@ public class UserServiceImpl implements UserService {
                 .token(token)
                 .tokenType("Bearer")
                 .expiresIn(86400000L)
+                .user(LoginResponse.UserInfo.builder()
+                        .id(user.getId())
+                        .username(user.getUsername())
+                        .realName(user.getRealName())
+                        .email(user.getEmail())
+                        .phone(user.getPhone())
+                        .avatar(user.getAvatar())
+                        .orgId(user.getOrgId())
+                        .orgName(user.getOrganization() != null ? user.getOrganization().getName() : null)
+                        .deptId(user.getDeptId())
+                        .deptName(user.getDepartment() != null ? user.getDepartment().getName() : null)
+                        .roles(user.getRoles().stream().map(Role::getCode).collect(Collectors.toList()))
+                        .permissions(permissions.stream().map(Permission::getCode).collect(Collectors.toList()))
+                        .build())
+                .build();
+    }
+
+    @Override
+    public void logout() {
+        SecurityContextHolder.clearContext();
+    }
+
+    @Override
+    public LoginResponse refreshToken(String token) {
+        if (!jwtTokenUtil.validateToken(token)) {
+            throw new BusinessException("Token无效或已过期");
+        }
+        String username = jwtTokenUtil.getUsernameFromToken(token);
+        User user = userMapper.findByUsername(username);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        if (user.getStatus() != 1) {
+            throw new BusinessException("用户已被禁用");
+        }
+        loadUserRelations(user);
+        String newToken = jwtTokenUtil.generateToken(username);
+        Set<Permission> permissions = getUserPermissions(user);
+        return LoginResponse.builder()
+                .token(newToken)
+                .tokenType("Bearer")
+                .expiresIn(expiration)
                 .user(LoginResponse.UserInfo.builder()
                         .id(user.getId())
                         .username(user.getUsername())
