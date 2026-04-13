@@ -1,5 +1,6 @@
 package com.andy.warehouse.security;
 
+import com.andy.warehouse.service.TokenService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -22,6 +23,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenUtil jwtTokenUtil;
     private final UserDetailsServiceImpl userDetailsService;
+    private final TokenService tokenService;
 
     @Override
     protected void doFilterInternal(
@@ -30,7 +32,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
         String token = getTokenFromRequest(request);
-        if (StringUtils.hasText(token) && jwtTokenUtil.validateToken(token)) {
+        if (StringUtils.hasText(token) && jwtTokenUtil.validateToken(token) && !tokenService.isBlacklisted(token)) {
             String username = jwtTokenUtil.getUsernameFromToken(token);
             UserDetails userDetails = userDetailsService.loadUserByUsername(username);
             UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(

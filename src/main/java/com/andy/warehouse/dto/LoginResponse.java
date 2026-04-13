@@ -14,6 +14,7 @@ import java.util.List;
 public class LoginResponse {
 
     private String token;
+    private String refreshToken;
     private String tokenType = "Bearer";
     private Long expiresIn;
     private UserInfo user;

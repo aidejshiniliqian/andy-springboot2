@@ -5,11 +5,13 @@ import com.andy.warehouse.dto.*;
 import com.andy.warehouse.entity.*;
 import com.andy.warehouse.mapper.*;
 import com.andy.warehouse.security.JwtTokenUtil;
+import com.andy.warehouse.service.TokenService;
 import com.andy.warehouse.service.UserService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -22,6 +24,7 @@ import org.springframework.util.StringUtils;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -38,6 +41,10 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenUtil jwtTokenUtil;
     private final AuthenticationManager authenticationManager;
+    private final TokenService tokenService;
+
+    @Value("${jwt.expiration:86400000}")
+    private Long expiration;
 
     @Override
     public LoginResponse login(LoginRequest request) {
@@ -54,11 +61,14 @@ public class UserServiceImpl implements UserService {
         }
         loadUserRelations(user);
         String token = jwtTokenUtil.generateToken(request.getUsername());
+        String refreshToken = UUID.randomUUID().toString().replace("-", "");
+        tokenService.storeRefreshToken(request.getUsername(), refreshToken);
         Set<Permission> permissions = getUserPermissions(user);
         return LoginResponse.builder()
                 .token(token)
+                .refreshToken(refreshToken)
                 .tokenType("Bearer")
-                .expiresIn(86400000L)
+                .expiresIn(expiration)
                 .user(LoginResponse.UserInfo.builder()
                         .id(user.getId())
                         .username(user.getUsername())
